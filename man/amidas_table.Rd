@@ -1,0 +1,98 @@
+\name{amidas_table}
+\alias{amidas_table}
+\title{Weight and lag selection table for aggregates based MIDAS regression model}
+\usage{
+  amidas_table(formula, data, weights, wstart, type,
+    start = NULL, from, to, IC = c("AIC", "BIC"),
+    test = c("hAh.test"), Ofunction = "optim",
+    user.gradient = FALSE, ...)
+}
+\arguments{
+  \item{formula}{the formula for MIDAS regression, the lag
+  selection is performed for the last MIDAS lag term in the
+  formula}
+
+  \item{data}{a list containing data with mixed
+  frequencies}
+
+  \item{weights}{the names of weights used in Ghysels
+  schema}
+
+  \item{wstart}{the starting values for the weights of the
+  firs low frequency lag}
+
+  \item{type}{the type of Ghysels schema see
+  \link{amweights}, can be a vector of types}
+
+  \item{start}{the starting values for optimisation
+  excluding the starting values for the last term}
+
+  \item{from}{a named list, or named vector with high
+  frequency (NB!) lag numbers which are the beginnings of
+  MIDAS lag structures. The names should correspond to the
+  MIDAS lag terms in the formula for which to do the lag
+  selection. Value NA indicates lag start at zero}
+
+  \item{to}{to a named list where each element is a vector
+  with two elements. The first element is the low frequency
+  lag number from which the lag selection starts, the
+  second is the low frequency lag number at which the lag
+  selection ends. NA indicates lowest (highest) lag numbers
+  possible.}
+
+  \item{IC}{the names of information criteria which should
+  be calculated}
+
+  \item{test}{the names of statistical tests to perform on
+  restricted model, p-values are reported in the columns of
+  model selection table}
+
+  \item{Ofunction}{see \link{midasr}}
+
+  \item{user.gradient}{see \link{midas_r}}
+
+  \item{...}{additional parameters to optimisation
+  function, see \link{midas_r}}
+}
+\value{
+  a \code{midas_r_ic_table} object which is the list with
+  the following elements:
+
+  \item{table}{the table where each row contains calculated
+  information criteria for both restricted and unrestricted
+  MIDAS regression model with given lag structure}
+  \item{candlist}{the list containing fitted models}
+  \item{IC}{the argument IC} \item{test}{the argument test}
+  \item{weights}{the names of weight functions}
+  \item{lags}{the lags used in models}
+}
+\description{
+  Create weight and lag selection table for the aggregates
+  based MIDAS regression model
+}
+\details{
+  This function estimates models sequentialy increasing the
+  midas lag from \code{kmin} to \code{kmax} and varying the
+  weights of the last term of the given formula
+
+  This function estimates models sequentially increasing
+  the midas lag from \code{kmin} to \code{kmax} and varying
+  the weights of the last term of the given formula
+}
+\examples{
+data("USunempr")
+data("USrealgdp")
+y <- diff(log(USrealgdp))
+x <- window(diff(USunempr),start=1949)
+trend <- 1:length(y)
+
+tb <- amidas_table(y~trend+fmls(x,12,12,nealmon),
+                   data=list(y=y,x=x,trend=trend),
+                   weights=c("nealmon"),wstart=list(nealmon=c(0,0,0)),
+                   start=list(trend=1),type=c("A"),
+                   from=0,to=c(1,2))
+}
+\author{
+  Virmantas Kvedaras, Vaidotas Zemlys
+}
+

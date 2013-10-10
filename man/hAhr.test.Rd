@@ -1,0 +1,90 @@
+\name{hAhr.test}
+\alias{hAhr.test}
+\title{Test restrictions on coefficients of MIDAS regression using robust version of the test}
+\usage{
+  hAhr.test(x,
+    PHI = vcovHAC(x$unrestricted, sandwich = FALSE))
+}
+\arguments{
+  \item{x}{MIDAS regression model with restricted
+  coefficients, estimated with \code{\link{midas_r}}}
+
+  \item{PHI}{the "meat" covariance matrix, defaults to
+  \code{vcovHAC(x$unrestricted, sandwich=FALSE)}}
+}
+\value{
+  a \code{htest} object
+}
+\description{
+  Perform a test whether the restriction on MIDAS
+  regression coefficients holds.
+}
+\details{
+  Given MIDAS regression:
+
+  \deqn{y_t=\sum_{j=0}^k\sum_{i=0}^{m-1}\theta_{jm+i}
+  x_{(t-j)m-i}+u_t}
+
+  test the null hypothesis that the following restriction
+  holds:
+
+  \deqn{\theta_h=g(h,\lambda),} where \eqn{h=0,...,(k+1)m}.
+}
+\examples{
+##The parameter function
+theta.h0 <- function(p, dk, ...) {
+   i <- (1:dk-1)
+   (p[1] + p[2]*i)*exp(p[3]*i + p[4]*i^2)
+}
+
+##Generate coefficients
+theta0 <- theta.h0(c(-0.1,0.1,-0.1,-0.001),4*12)
+
+##Plot the coefficients
+plot(theta0)
+
+##Generate the predictor variable
+set.seed(13)
+x <- simplearma.sim(list(ar=0.6),1500*12,1,12)
+
+##Simulate the response variable
+y <- midas.sim(500,theta0,x,1)
+
+##Remove unnecessary history of x
+x <- window(x,start=start(y))
+
+##Fit restricted model
+mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,
+              list(y=y,x=x),
+              start=list(x=c(-0.1,0.1,-0.1,-0.001)))
+
+##The gradient function
+theta.h0.gradient <-function(p, dk,...) {
+   i <- (1:dk-1)
+   a <- exp(p[3]*i + p[4]*i^2)
+   cbind(a, a*i, a*i*(p[1]+p[2]*i), a*i^2*(p[1]+p[2]*i))
+}
+
+##Perform test (the expected result should be the acceptance of null)
+
+hAhr.test(mr)
+
+mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,
+              list(y=y,x=x),
+              start=list(x=c(-0.1,0.1,-0.1,-0.001)),
+              user.gradient=TRUE)
+
+##Use exact gradient. Note the
+hAhr.test(mr)
+}
+\author{
+  Virmantas Kvedaras, Vaidotas Zemlys
+}
+\references{
+  Kvedaras V., Zemlys, V. \emph{The statistical content and
+  empirical testing of the MIDAS restrictions}
+}
+\seealso{
+  hAh.test
+}
+
