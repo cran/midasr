@@ -92,12 +92,14 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
     R <- qr.R(qr(XD))
     XDtXDinv <- chol2inv(R)
     dimnames(XDtXDinv) <- list(pnames,pnames)
-       
-    if(is.null(vcov.)) {
-        se <- sqrt(diag(XDtXDinv)*resvar)
-    }
-    else {
-        se <- sqrt(diag(vcov.(object,prewhite=prewhite,...)))
+
+    se <- sqrt(diag(XDtXDinv)*resvar)
+    
+    if(!is.null(vcov.)) {
+        set <- try(sqrt(diag(vcov.(object,prewhite=prewhite,...))))
+        if(class(set)=="try-error") {
+            warning("Unable to compute robust standard errors, using non-robust ones. This is an indication of problems with optimisation, please try other starting values or change optimisation method")
+        } else se <- set
     }
     tval <- param/se
 
@@ -448,13 +450,17 @@ data_to_list <- function(data) {
                     names(x) <- nm
                     x
                 } else {
-                    ##This is needed since if tseries library is not loaded as.list for mts does not work as expected
-                    if(inherits(x,"mts")) x <- data.frame(x)
+                    ##This is needed since if tseries library is not loaded as.list for mts does not work as expected                   
+                    if(inherits(x,"mts")) 
+                        x <- data.frame(x)
                     if(ncol(x)==1) {
-                        x <- list(as.numeric(x))
+                        if(!is.null(colnames(x))) {
+                            if(nm=="") nm <- colnames(x)
+                            else warning("Duplicate names in data. Using the one from the list")                                                                              }                        
+                        x <- list(as.numeric(x[,1]))
                         names(x) <- nm
                         x
-                    }
+                    }                      
                     else {
                         as.list(data.frame(x))
                     }

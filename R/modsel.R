@@ -461,7 +461,7 @@ midas_r_ic_table.midas_r_ic_table <- function(formula,...) {
     do.call("make_ic_table",formula[-1])
 }
 
-make_ic_table <- function(candlist,IC,test) {
+make_ic_table <- function(candlist,IC,test,...) {
     makelist <- function(x) {
         if(length(x)==1)list(x)
         else as.list(x)
@@ -823,23 +823,28 @@ amidas_table <- function(formula,data,weights,wstart,type,start=NULL,from,to,IC=
     
 
 add_expressions <- function(l) {
-    if(length(l)<2) stop("You need 2 elements for addition")
-    base <- expression(a+b)
-    base[[c(1,2)]] <- l[[1]]
-    base[[c(1,3)]] <- l[[2]]
-    if(length(l)>2) {
-        l <- l[-2:-1]
-        for(i in 1:length(l)) {
-            tmp <- expression(a+b)
-            tmp[[c(1,2)]] <- base[[1]]
-            tmp[[c(1,3)]] <- l[[i]]
-            base[[1]] <- tmp[[1]]
-        }
+    if(!is.list(l))stop("The summands must be in a list")
+    if(length(l)==1) {
+        return(l[[1]])
     }
-    base[[1]]    
+    else {
+        base <- expression(a+b)
+        base[[c(1,2)]] <- l[[1]]
+        base[[c(1,3)]] <- l[[2]]
+        if(length(l)>2) {
+            l <- l[-2:-1]
+            for(i in 1:length(l)) {
+                tmp <- expression(a+b)
+                tmp[[c(1,2)]] <- base[[1]]
+                tmp[[c(1,3)]] <- l[[i]]
+                base[[1]] <- tmp[[1]]
+            }
+        }
+        return(base[[1]])
+    }
 }
 
-variables_to_formula <- function(vars,intercept=0) {
+variables_to_formula <- function(vars,intercept=0) {   
     rhs <- add_expressions(vars[-1])
     if(intercept==1) {
         res <- formula(a~b-1)
@@ -1063,6 +1068,7 @@ split_data <- function(data,insample,outsample) {
 ##' @param type a string indicating which type of forecast to use. 
 ##' @param fweights names of weighting schemes
 ##' @param measures names of accuracy measures
+##' @param showprogress logical, TRUE to show progress bar, FALSE for silent evaluation
 ##' @return a list containing forecasts and tables of accuracy measures
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
@@ -1091,7 +1097,7 @@ split_data <- function(data,insample,outsample) {
 ##'                         type="fixed",                            
 ##'                         measures=c("MSE","MAPE","MASE"),
 ##'                         fweights=c("EW","BICW","MSFE","DMSFE"))
-average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recursive","rolling"),fweights=c("EW","BICW","MSFE","DMSFE"),measures=c("MSE","MAPE","MASE")) {
+average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recursive","rolling"),fweights=c("EW","BICW","MSFE","DMSFE"),measures=c("MSE","MAPE","MASE"),showprogress=TRUE) {
 
     #if(length(modlist)==1)stop("Need more than 1 model to produce average forecasts")
     if(missing(data))stop("Data need to be supplied for forecasting")
@@ -1132,28 +1138,39 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
                        )       
     }
     else {
+        if(type=="rolling") {
+            last_in<- length(insample)
+            if(insample[last_in]>outsample[1])stop("The in-sample and out-of-sample indexes should not overlap") 
+            if(outsample[1]-insample[last_in]!=1)stop("There should be no gaps between in-sample and out-of-sample indexes")
+            fulls <- c(insample,outsample)
+            
+        }
         outm <- matrix(NA,nrow=length(outsample),ncol=length(modlist))
-        cat("\nDoing", type, "forecast :\n")    
-        pb <- txtProgressBar(min=0,max=length(outsample),initial=0,style=3)
-   
+        if(showprogress) {
+            cat("\nDoing", type, "forecast :\n")    
+            pb <- txtProgressBar(min=0,max=length(outsample),initial=0,style=3)
+        }
+        
         for(i in 1:length(outsample)) {
             newout <- outsample[i]
             if(i>1) {
                 if(type=="recursive") newin <- c(insample,outsample[1:(i-1)])
-                else newin <- c(insample[-(i-1):-1],outsample[1:(i-1)])
+                else {                    
+                    newin <- fulls[1:last_in+i-1]
+                }
             }
             else newin <- insample
             splitnew <- split_data(data,newin,newout)
             emod <- reeval(modlist,splitnew$indata)
             outm[i,] <- sapply(emod,forecast.midas_r,newdata=splitnew$outdata,method="static")
-            setTxtProgressBar(pb, i)
+            if(showprogress) setTxtProgressBar(pb, i)
         }
         if(length(modlist)>1) {
             outf <- lapply(data.frame(outm),function(x)cbind(outdata[[yname]],x))}
         else {
             outf <- list(cbind(outdata[[yname]],outm[,1]))
         }
-        close(pb)
+        if(showprogress)close(pb)
     }
     
     msrfun <- lapply(measures,function(msr)eval(as.name(msr)))
