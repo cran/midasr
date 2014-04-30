@@ -1103,7 +1103,11 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
     if(missing(data))stop("Data need to be supplied for forecasting")
     
     type <- match.arg(type)
-  
+ 
+    last_in<- length(insample)
+    if(insample[last_in]>outsample[1])stop("The in-sample and out-of-sample indexes should not overlap") 
+    if(outsample[1]-insample[last_in]!=1)stop("There should be no gaps between in-sample and out-of-sample indexes")
+   
     datasplit <- split_data(data,insample,outsample)
 
     indata <- datasplit$indata
@@ -1119,10 +1123,14 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
     reeval <- function(candlist,redata) {
         lapply(candlist,function(mod) {
             ##Setup all the necessary info
-            out <- midas_r(formula(mod),data=redata,start=mod$start.list,Ofunction="optim",method="BFGS",control=list(maxit=0))
+            if(inherits(mod,"midas_r_np")) {
+                do.call("midas_r_np",list(formula(mod),data=redata),envir=mod$Zenv)
+            } else {             
+                out <- do.call("midas_r",list(formula(mod),data=redata,start=mod$start.list,Ofunction="optim",method="BFGS",control=list(maxit=0)),envir=mod$Zenv)
             ##Run optimisation with the original model settings
-            out$argmap.opt <- mod$argmap.opt
-            midas_r(out,start=coef(mod))        
+                out$argmap.opt <- mod$argmap.opt
+                do.call("midas_r",list(out,start=coef(mod)),envir=out$Zenv)
+            }
         })
     }
 
@@ -1138,12 +1146,8 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
                        )       
     }
     else {
-        if(type=="rolling") {
-            last_in<- length(insample)
-            if(insample[last_in]>outsample[1])stop("The in-sample and out-of-sample indexes should not overlap") 
-            if(outsample[1]-insample[last_in]!=1)stop("There should be no gaps between in-sample and out-of-sample indexes")
-            fulls <- c(insample,outsample)
-            
+        if(type%in%c("rolling")) {
+            fulls <- c(insample,outsample)            
         }
         outm <- matrix(NA,nrow=length(outsample),ncol=length(modlist))
         if(showprogress) {
