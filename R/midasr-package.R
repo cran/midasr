@@ -1,12 +1,11 @@
-##' Package for estimating and testing MIDAS regression.
+##' Package for estimating, testing and forecasting MIDAS regression.
 ##' 
-##' The main feature of this package is function \code{\link{hAh.test}}
-##' which performs test whether coefficients of MIDAS regression have certain functional form
+##' Methods and tools for mixed frequency time series data analysis. Allows estimation, model selection and forecasting for MIDAS regressions. 
 ##' 
 ##' @name midasr-package
 ##' @aliases midasr
 ##' @docType package
-##' @title Estimating and testing MIDAS regression
+##' @title Mixed Data Sampling Regression
 ##' @author Virmantas Kvedaras \email{virmantas.kvedaras@@mif.vu.lt}, Vaidotas Zemlys (maintainer) \email{zemlys@@gmail.com}
 ##' @keywords package
 NULL
@@ -83,7 +82,7 @@ NULL
 ##' ## }
 ##' 
 ##' ## bnorm <- function(x) {
-##' ##     sqrt(sum((midas_coef(x)-c(2,0.1,nealmon(p=c(2,0.5,-0.1),d=17)))^2))
+##' ##     sqrt(sum((coef(x, midas = TRUE)-c(2,0.1,nealmon(p=c(2,0.5,-0.1),d=17)))^2))
 ##' ## }
 ##' 
 ##' ## rep1 <- function(n) {

@@ -18,7 +18,7 @@ deviance.midas_r <- function(object,...) {
 ##' 
 ##' @title Predict method for MIDAS regression fit
 ##' @param object \code{\link{midas_r}} object
-##' @param newdata a named list containing data for mixed frequencies. If omitted, the fitted values are used.
+##' @param newdata a named list containing data for mixed frequencies. If omitted, the in-sample values are used.
 ##' @param na.action function determining what should be done with missing values in \code{newdata}. The most likely cause of missing values is the insufficient data for the lagged variables. The default is to omit such missing values.
 ##' @param ... additional arguments, not used
 ##' @return a vector of predicted values
@@ -72,12 +72,11 @@ predict.midas_r <- function(object, newdata, na.action = na.omit, ... ) {
     mt <- attr(mf, "terms")
 
     X <- model.matrix(mt, mf) 
-    as.vector(X %*% midas_coef(object))
+    as.vector(X %*% coef(object, midas = TRUE))
 }
 ##' @export
 ##' @method predict midas_u
 predict.midas_u <- predict.midas_r
-
 
 ##' @export
 ##' @method summary midas_r
@@ -93,8 +92,23 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
     R <- qr.R(qr(XD))
     XDtXDinv <- chol2inv(R)
     dimnames(XDtXDinv) <- list(pnames,pnames)
-
+        
     se <- sqrt(diag(XDtXDinv)*resvar)
+
+    f <- as.vector(object$fitted.values)
+    mss <- if (attr(object$terms, "intercept")) 
+        sum((f - mean(f))^2)
+    else sum(f^2)
+    rss <- sum(r^2)
+
+    n <- length(r)
+    p <- length(coef(object))
+    rdf <- n-p
+    df.int <- if (attr(object$terms, "intercept")) 1L
+    else 0L
+
+    r_squared <- mss/(mss + rss)
+    adj_r_squared <- 1 - (1 - r_squared) * ((n - df.int)/rdf)
     
     if(!is.null(vcov.)) {
         set <- try(sqrt(diag(vcov.(object,prewhite=prewhite,...))))
@@ -124,7 +138,8 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
         "t value", "Pr(>|t|)"))
     ans <- list(formula=formula(object$terms),residuals=r,sigma=sqrt(resvar),
                 df=c(p,rdf), cov.unscaled=XDtXDinv, call=object$call,
-                coefficients=param,midas.coefficients=midas_coef(object))
+                coefficients=param,midas_coefficients=coef(object, midas = TRUE),
+                r_squared = r_squared, adj_r_squared = adj_r_squared)
     class(ans) <- "summary.midas_r"
     ans
 }
@@ -138,6 +153,8 @@ print.summary.midas_r <- function(x, digits=max(3, getOption("digits") - 3 ), si
     cat("\n Parameters:\n")
     printCoefmat(x$coefficients,digits=digits,signif.stars=signif.stars,...)
     cat("\n Residual standard error:", format(signif(x$sigma,digits)), "on", rdf , "degrees of freedom\n")
+ #   cat(" Multiple R-squared: ", formatC(x$r_squared, digits = digits))
+ #   cat(",\tAdjusted R-squared: ", formatC(x$adj_r_squared, digits = digits),"\n")
     invisible(x)
 }
 
@@ -148,7 +165,7 @@ print.midas_r <- function(x, digits=max(3,getOption("digits")-3),...) {
     cat(" model:", deparse(formula(x)),"\n")
     print(coef(x),digits = digits, ...)
     cat("\n")
-    cat("Function", x$argmap.opt$Ofunction, "was used for fitting\n")
+    cat("Function", x$argmap_opt$Ofunction, "was used for fitting\n")
     invisible(x)
 }
 
@@ -197,117 +214,130 @@ logLik.midas_r <- function(object,...) {
     val
 }
 
-##' Return the coefficients of MIDAS regression
+##' Extracts various coefficients of MIDAS regression
 ##'
-##' A helper function for working with output of \code{\link{midas_r}}. Returns the regression coefficients.
+##' MIDAS regression has two sets of cofficients. The first set is the coefficients associated with the parameters
+##' of weight functions associated with MIDAS regression terms. These are the coefficients of the NLS problem associated with MIDAS regression.
+##' The second is the coefficients of the linear model, i.e  the values of weight
+##' functions of terms, or so called MIDAS coefficients. By default the function returns the first set of the coefficients.
 ##' 
-##' @param x an output from \code{\link{midas_r}}
-##' @return vector with coefficients of MIDAS regression
+##' @title Extract coefficients of MIDAS regression
+##' @param object \code{midas_r} object
+##' @param midas logical, if \code{TRUE}, MIDAS coefficients are returned, if \code{FALSE} (default), coefficients of NLS problem are returned
+##' @param term_names a character vector with term names. Default is \code{NULL}, which means that coefficients of all the terms are returned
+##' @param ... not used currently
+##' @return a vector with coefficients
 ##' @author Vaidotas Zemlys
+##' @method coef midas_r
+##' @rdname coef.midas_r
+##' @examples
+##'
+##' #Simulate MIDAS regression
+##' n<-250
+##' trend<-c(1:n)
+##' x<-rnorm(4*n)
+##' z<-rnorm(12*n)
+##' fn.x <- nealmon(p=c(1,-0.5),d=8)
+##' fn.z <- nealmon(p=c(2,0.5,-0.1),d=17)
+##' y<-2+0.1*trend+mls(x,0:7,4)%*%fn.x+mls(z,0:16,12)%*%fn.z+rnorm(n)
+##' eqr<-midas_r(y ~ trend + mls(x, 0:7, 4, nealmon) +
+##'              mls(z, 0:16, 12, nealmon),
+##'              start = list(x = c(1, -0.5), z = c(2, 0.5, -0.1)))
+##'
+##' coef(eqr)
+##' coef(eqr, term_names = "x")
+##' coef(eqr, midas = TRUE)
+##' coef(eqr, midas = TRUE, term_names = "x")
+##' 
 ##' @export
-midas_coef <- function(x) {
-    if(is.null(x$midas.coefficients))coef(x)
-    else x$midas.coefficients
+coef.midas_r <- function(object, midas = FALSE, term_names = NULL, ...) {
+    if(is.null(term_names)) {
+        if(midas) return(object$midas_coefficients)
+        else return(object$coefficients)
+    } else {
+        if(length(setdiff(term_names,names(object$term_info)))>0) stop("Some of the term names are not present in estimated MIDAS regression")
+        if(midas) {
+            res <- lapply(object$term_info[term_names], function(x) object$midas_coefficients[x$midas_coef_index])
+        } else {
+            res <- lapply(object$term_info[term_names], function(x) object$coefficients[x$coef_index])
+        }
+        names(res) <- NULL
+        if(length(res)==1) return(res[[1]])
+        else return(unlist(res))
+    }        
 }
 
-##' Return the estimated hyper parameters of the weight function(s)
-##'
-##' A helper function for working with output of \code{\link{midas_r}}. Returns the estimated parameters of restriction function(s)
-##' 
-##' @param x an output from \code{\link{midas_r}}
-##' @param name name of the restriction function, the default value is the names of the restriction functions supplied to \code{\link{midas_r}}
-##' @return a list if \code{length(name)>1}, a vector otherwise
-##' @author Vaidotas Zemlys
-##' @export
-weight_param <- function(x,name=weight_names(x)) {
-    if(!any(name %in% names(x$param.map))) stop("Supply valid name(s) of the restriction function")
-    res <- lapply(name,function(nm)coef(x)[x$param.map[[nm]]])
-    names(res) <- name
-    if(length(res)==1)res <- res[[1]]
-    res
-}
-##' Return the restricted coefficients generated by restriction function(s)
-##'
-##' A helper function for working with output of \code{\link{midas_r}}. Returns the restricted coefficients generated by restriction function(s)
-##' 
-##' @param x an output from \code{\link{midas_r}}
-##' @param name name(s) of the restriction function(s), the default value is the name(s) of the restriction function(s) supplied to \code{\link{midas_r}}
-##' @return a list if \code{length(name)>1}, a vector otherwise
-##' @author Vaidotas Zemlys
-##' @export
-weight_coef <- function(x,name=weight_names(x)) {
-    if(!any(name %in% names(x$param.map))) stop("Supply valid name(s) of the restriction function")
-    res <- lapply(name,function(nm)x$weights[[nm]](weight_param(x,nm)))
-    names(res) <- name
-    if(length(res)==1)res <- res[[1]] 
-    res
-}
-##' Return the names of restriction function(s)
-##'
-##' A helper function for working with output of \code{\link{midas_r}}. Returns the name(s) of restriction function(s) used in call to \code{\link{midas_r}}
-##' 
-##' @param x an output from \code{\link{midas_r}}
-##' @return a character vector
-##' @author Vaidotas Zemlys
-##' @export
-weight_names <- function(x) {
-    names(x$weights)
-}
-##' Return the coefficients for fmls variables
-##'
-##' Extracts the coefficients and returns those coefficients which name has string \code{fmls} or \code{mls} in it.
-##' 
-##' @param x an output from \code{\link{midas_u}}
-##' @return a vector
-##' @author Vaidotas Zemlys
-##' @export
-mls_coef <- function(x) {
-    cf <- coef(x)
-    cf[grep("fmls|mls|dmls",names(cf))]
+get_frequency_info <- function(x,...) UseMethod("get_frequency_info")
+
+get_frequency_info.midas_r <- function(object) {    
+    yname <- all.vars(object$terms[[2]])
+    res <- sapply(object$term_info,"[[","frequency")
+    ##Make sure response variable is first
+    if(!(yname %in% names(res))) {
+        res <- c(1,res)
+        names(res)[1] <- yname
+    } else {
+        res <- res[c(yname,setdiff(names(res),yname))]
+    }
+    res[setdiff(names(res),"(Intercept)")]
 }
 
-##' Function to compute AICc information criteria for a given model
-##'
-##' A generic function for calculating AICc. It is implemented for \link{midas_r} package. For more examples see package AICcmodavg.
-##' @title Compute AICc
-##' @param mod \code{midas_r} model
-##' @param ... additional parameters
-##' @return a computed AICc value, a number.
-##' @author Vaidotas Zemlys
-##' @rdname AICc
-AICc <- function(mod,...)UseMethod("AICc")
-
-##' @export 
-##' @method AICc midas_r
-AICc.midas_r <- function(mod) {
-    n <- length(fitted(mod))
-    LL <- logLik(mod)[1]
-    K <- attr(logLik(mod), "df")
-    -2 * LL + 2 * K * (n/(n - K - 1))
-}
-
-get_frequency_info<- function(mt,Zenv) {
-    vars <- as.list(attr(mt,"variables"))[-1]
+get_frequency_info.default <- function (mt, Zenv) 
+{
+    vars <- as.list(attr(mt, "variables"))[-1]
     res <- lapply(vars, function(l) {
-        if(length(l)>1) {
-            if(as.character(l[[1]])%in%c("mls","fmls","dmls")) {             
-                m <-eval(l[[4]],Zenv)              
+        if (length(l) > 1) {
+            if (as.character(l[[1]]) %in% c("mls", "fmls", "dmls")) {
+                m <- eval(l[[4]], Zenv)
                 varnames <- as.character(all.vars(l[[2]]))
-                list(varname=varnames,m=rep(m,length(varnames)))
+                list(varname = varnames, m = rep(m, length(varnames)))
             }
             else {
                 varnames <- as.character(all.vars(l))
-                list(varname=varnames,m=rep(1,length(varnames)))
+                list(varname = varnames, m = rep(1, length(varnames)))
             }
         }
-        else list(varname=as.character(l),m=1)
+        else list(varname = as.character(l), m = 1)
     })
-    
-    varn <- Reduce("c",lapply(res,"[[","varname"))
-    freq <- Reduce("c",lapply(res,"[[","m"))
+    varn <- Reduce("c", lapply(res, "[[", "varname"))
+    freq <- Reduce("c", lapply(res, "[[", "m"))
     out <- freq
     names(out) <- varn
     out[unique(names(out))]
+}
+
+dynamic_forecast <- function(object, h, fdata, outsample, freqinfo, innov = rep(0,h) ) {
+    yname <- names(freqinfo)[1]
+    outsample <- outsample[names(outsample)!=yname]
+    yna <- list(NA)
+    names(yna) <- yname
+    res <- rep(NA,h)        
+    for(i in 1:h) {
+        ##Get the data for the current low frequency lag
+        hout <- mapply(function(var,m){
+            var[1:m+(i-1)*m]
+        },outsample,freqinfo[names(outsample)],SIMPLIFY=FALSE)
+        hout <- c(yna,hout)
+        fdata <- rbind_list(fdata[names(hout)],hout)
+        if(class(fdata)=="try-error")stop("Missing variables in newdata. Please supply the data for all the variables (excluding the response variable) in regression")
+        rr <- predict.midas_r(object,newdata=fdata,na.action=na.pass)
+        n <- length(rr)
+        res[i] <- rr[n] + innov[i]
+        fdata[[yname]][n] <- res[i]             
+    }
+    res
+}
+
+static_forecast <- function(object, h, insample, outsample, yname) {
+    if(!(yname %in% names(outsample))) {
+        outsample <- c(list(rep(NA,h)),outsample)
+        names(outsample)[1] <- yname
+    }
+    data <- try(rbind_list(insample[names(outsample)],outsample))
+    if(class(data)=="try-error")stop("Missing variables in newdata. Please supply the data for all the variables (excluding the response variable) in regression")
+    res <- predict.midas_r(object,newdata=data,na.action=na.pass)        
+    n <- length(res)
+    res[n+1-h:1]
 }
 
 
@@ -317,13 +347,30 @@ get_frequency_info<- function(mt,Zenv) {
 ##' 
 ##' @title Forecast MIDAS regression
 ##' @param object midas_r object
-##' @param newdata newdata
+##' @param newdata a named list containing future values of mixed frequency regressors. The default is \code{NULL}, meaning that only in-sample data is used.
+##' @param se logical, if \code{TRUE}, the prediction intervals are calculated
+##' @param level confidence level for prediction intervals
+##' @param fan if TRUE, level is set to seq(50,99,by=1). This is suitable for fan plots
+##' @param npaths the number of samples for simulating prediction intervals
 ##' @param method the forecasting method, either \code{"static"} or \code{"dynamic"}
 ##' @param insample a list containing the historic mixed frequency data 
-##' @param ... additional arguments, not used
-##' @return a vector of forecasts
+##' @param show_progress logical, if \code{TRUE}, the progress bar is shown if \code{se = TRUE}
+##' @param add_ts_info logical, if \code{TRUE}, the forecast is cast as \code{ts} object. Some attempts are made to guess the correct start, by assuming that the response variable is a \code{ts} object of \code{frequency} 1. If \code{FALSE}, then the result is simply a numeric vector.
+##' @param ... additional arguments to \code{simulate.midas_r}
+##' @return an object of class \code{"forecast"}, a list containing following elements:
+##'
+##' \item{method}{the name of forecasting method: MIDAS regression, static or dynamic}
+##' \item{model}{original object of class \code{midas_r}}
+##' \item{mean}{point forecasts}
+##' \item{lower}{lower limits for prediction intervals}
+##' \item{upper}{upper limits for prediction intervals}
+##' \item{fitted}{fitted values, one-step forecasts}
+##' \item{residuals}{residuals from the fitted model}
+##' \item{x}{the original response variable}
+##'
+##' The methods \code{print}, \code{summary} and \code{plot} from package \code{forecast} can be used on the object.
 ##' @author Vaidotas Zemlys
-##' @rdname forecast.midas_r
+##' @method forecast midas_r
 ##' @examples
 ##' data("USrealgdp")
 ##' data("USunempr")
@@ -352,14 +399,65 @@ get_frequency_info<- function(mt,Zenv) {
 ##' 
 ##' forecast(mr.dyn, list(trend = trendn, x = xn), method = "dynamic")
 ##'
-##' @export
-forecast <- function(object,...) UseMethod("forecast") 
+##' ##Use print, summary and plot methods from package forecast
+##' 
+##' fmr <- forecast(mr, list(trend = trendn, x = xn), method = "static")
+##' fmr
+##' summary(fmr)
+##' plot(fmr)
+##' 
+##' @export 
+forecast.midas_r <- function(object, newdata=NULL, se = FALSE, level=c(80,95),
+                             fan=FALSE, npaths=999,
+                             method=c("static","dynamic"), insample=get_estimation_sample(object),
+                             show_progress = TRUE, add_ts_info = FALSE, ...) {
+    method <- match.arg(method)
+    
+    pred <- point_forecast.midas_r(object, newdata = newdata, method = method, insample = insample)
+    if(se) {
+        sim <- simulate(object, nsim = npaths, future = TRUE, newdata = newdata, method = method, insample = insample, show_progress = show_progress, ...)
+        if (fan) 
+            level <- seq(51, 99, by = 3)
+        else {
+            if (min(level) > 0 & max(level) < 1) 
+                level <- 100 * level
+            else if (min(level) < 0 | max(level) > 99.99) 
+                stop("Confidence limit out of range")
+        }
+        nint <- length(level)        
+        lower <- apply(sim, 2, quantile, 0.5 - level/200, type = 8)
+        upper <- apply(sim, 2, quantile, 0.5 + level/200, type = 8)
+        if (nint > 1L) {
+            lower <- t(lower)
+            upper <- t(upper)
+        }    
+    } else {
+        lower <- NULL
+        upper <- NULL
+    }
+    xout <- object$model[, 1]
+    if(add_ts_info) {
+        xstart <- 1
+        if(!is.null(rownames(object$model))) {
+            xstart <- as.numeric(rownames(object$model)[1])
+            if(is.na(xstart)) xstart <- 1
+            }
+        xout <- ts(xout, start = xstart, frequency = 1)
+        pred <- ts(pred, start = end(xout)+1, frequency = 1)
+        }
+    return(structure(list(method = paste0("MIDAS regression forecast (",method,")"),
+                          model = object,
+                          level = level,
+                          mean = pred,
+                          lower = lower,
+                          upper = upper,
+                          fitted = predict(object),
+                          residuals = residuals(object),                          
+                          x = xout
+                          ), class = "forecast"))
+}
 
-##' @rdname forecast.midas_r
-##' @method forecast midas_r
-##' @S3method forecast midas_r
-##' @export forecast.midas_r
-forecast.midas_r <- function(object,newdata=NULL,method=c("static","dynamic"),insample=get_estimation_sample(object),...) {
+point_forecast.midas_r <- function(object, newdata=NULL, method=c("static","dynamic"), insample=get_estimation_sample(object), ...) {
 
     method <- match.arg(method)
 
@@ -370,7 +468,7 @@ forecast.midas_r <- function(object,newdata=NULL,method=c("static","dynamic"),in
     yname <- all.vars(object$terms[[2]])
    
     ##Get the frequency information of each variable    
-    freqinfo <- get_frequency_info(terms(object),object$Zenv)
+    freqinfo <- get_frequency_info(object)
 
     if(length(setdiff(names(freqinfo),c(yname,names(outsample))))>0) stop("Missing variables in newdata. Please supply the data for all the variables (excluding the response variable) in regression")
 
@@ -380,40 +478,14 @@ forecast.midas_r <- function(object,newdata=NULL,method=c("static","dynamic"),in
     firstno <- names(outsample)[1]
  
     h <- length(outsample[[firstno]])%/%freqinfo[firstno]
-    
-    
+        
     if(method=="static") {
-        if(!(yname %in% names(outsample))) {
-            outsample <- c(list(rep(NA,h)),outsample)
-            names(outsample)[1] <- yname
-        }
-        data <- try(rbind_list(insample[names(outsample)],outsample))
-        if(class(data)=="try-error")stop("Missing variables in newdata. Please supply the data for all the variables (excluding the response variable) in regression")
-        res <- predict.midas_r(object,newdata=data,na.action=na.pass)        
-        n <- length(res)
-        res[n+1-h:1]
+        res <- static_forecast(object, h, insample, outsample, yname)
     }
     else {
-        fdata <- insample[names(freqinfo)]
-        outsample <- outsample[names(outsample)!=yname]
-        yna <- list(NA)
-        names(yna) <- yname
-        res <- rep(NA,h)        
-        for(i in 1:h) {
-            ##Get the data for the current low frequency lag
-            hout <- mapply(function(var,m){
-                var[1:m+(i-1)*m]
-            },outsample,freqinfo[names(outsample)],SIMPLIFY=FALSE)
-            hout <- c(yna,hout)
-            fdata <- rbind_list(fdata[names(hout)],hout)
-            if(class(fdata)=="try-error")stop("Missing variables in newdata. Please supply the data for all the variables (excluding the response variable) in regression")
-            rr <- predict.midas_r(object,newdata=fdata,na.action=na.pass)
-            n <- length(rr)
-            res[i] <- rr[n]
-            fdata[[yname]][n] <- res[i]             
-        }
-        res
+        res <- dynamic_forecast(object, h, insample[names(freqinfo)], outsample, freqinfo)        
     }
+    res
 }
 
 ##' @export
@@ -494,3 +566,79 @@ get_estimation_sample <- function(object) {
     #The weights in the mls terms come up as variables, we do not need them
     insample[!sapply(insample,is.function)]
 }
+
+##' @importFrom forecast forecast
+##' @name forecast
+##' @rdname forecast.midas_r
+##' @export
+NULL
+
+##' Plots MIDAS coefficients of a MIDAS regression for a selected term.
+##'
+##' Plots MIDAS coefficients of a selected MIDAS regression term together with corresponding MIDAS coefficients and their confidence intervals
+##' of unrestricted MIDAS regression
+##' @title Plot MIDAS coefficients
+##' @param x \code{midas_r} object
+##' @param term_name the term name for which the coefficients are plotted. Default is \code{NULL}, which selects the first MIDAS term
+##' @param title the title string of the graph. The default is \code{NULL} for the default title.
+##' @param vcov. the covariance matrix to calculate the standard deviation of the cofficients
+##' @param unrestricted the unrestricted model, the default is unrestricted model from the \code{x} object. Set NULL to plot only the weights.
+##' @param ... additional arguments passed to \code{vcov.}
+##' @return a data frame with restricted MIDAS coefficients, unrestricted MIDAS coefficients and lower and upper confidence interval limits. The data
+##' frame is returned invisibly.
+##' @author Virmantas Kvedaras, Vaidotas Zemlys
+##' @examples
+##' data("USrealgdp")
+##' data("USunempr")
+##' 
+##' y <- diff(log(USrealgdp))
+##' x <- window(diff(USunempr), start = 1949)
+##' trend <- 1:length(y)
+##' 
+##' ##24 high frequency lags of x included
+##' mr <- midas_r(y ~ trend + fmls(x, 23, 12, nealmon), start = list(x = rep(0, 3)))
+##' 
+##' plot_midas_coef(mr)
+##' @export
+plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, unrestricted = x$unrestricted, ...) {
+    if(is.null(term_name)) {
+        wt <- do.call("rbind",lapply(x$term_info,function(l)c(l$term_name,l$weight_name)))
+        wt <- data.frame(wt)
+        colnames(wt) <- c("term_name","weight_name")
+        wt <- wt[wt$weight_name != "", ]
+        if(nrow(wt)==0) stop("No terms with MIDAS weights in midas_r object")
+        if(nrow(wt)>1) warning("Multiple terms with MIDAS weights, choosing the first one. Please specify the desired term name via 'term_name' argument.")
+        term_name <-wt$term_name[1]
+    }
+    ti <- x$term_info[[term_name]]
+    mcoef <- coef(x, midas = TRUE)[ti$midas_coef_index]
+    k <- length(mcoef)
+    
+    if(is.null(unrestricted)) {
+        pd <- data.frame(restricted = mcoef, unrestricted=NA, lower=NA,upper=NA)
+        plot(0:(k-1), pd$restricted, col = "blue", ylab = "MIDAS coefficients", xlab="High frequency lag", type="l")
+        if(is.null(title)) {
+            title(main = paste0("MIDAS coefficients for term ",term_name,": ",ti$weight_name))
+        } else title(main = title)     
+    } else {
+        ucoef <- coef(unrestricted)[ti$midas_coef_index]        
+        k <- length(mcoef)
+        sdval <- sqrt(diag(vcov.(unrestricted, ...)))
+        sdval <- sdval[ti$midas_coef_index]
+        
+        pd <- data.frame(restricted=mcoef, unrestricted=ucoef, lower=ucoef - 1.96*sdval,upper=ucoef + 1.96*sdval)
+    
+        ylim <- range(c(pd[,1],pd[,2],pd[,3],pd[,4]))
+    
+        plot(0:(k-1), pd$unrestricted, col="black", ylab="MIDAS coefficients", xlab="High frequency lag", ylim = ylim)
+        if(is.null(title)) {
+            title(main = paste0("MIDAS coefficients for term ",term_name,": ",ti$weight_name, " vs unrestricted"))
+        } else title(main = title)
+        points(c(0:(k - 1)), pd$restricted, type = "l", col = "blue")    
+        points(c(0:(k - 1)), pd$lower, type = "l", col = "red", lty = 2)
+        points(c(0:(k - 1)), pd$upper, type = "l", col = "red", lty = 2)
+    }
+    invisible(pd)
+}
+
+

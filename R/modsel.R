@@ -11,7 +11,7 @@ if(getRversion() >= "2.15.1")  utils::globalVariables("X")
 ##' @param IC the information criteria which to compute
 ##' @param test the names of statistical tests to perform on restricted model, p-values are reported in the columns of model selection table
 ##' @param Ofunction see \link{midasr}
-##' @param user.gradient see \link{midas_r}
+##' @param weight_gradients see \link{midas_r}
 ##' @param ... additional parameters to optimisation function, see \link{midas_r}
 ##' @return a \code{midas_r_iclagtab} object which is the list with the following elements:
 ##'
@@ -26,15 +26,16 @@ if(getRversion() >= "2.15.1")  utils::globalVariables("X")
 ##' x <- window(diff(USunempr),start=1949)
 ##' trend <- 1:length(y)
 ##' 
-##' mlr <- hf_lags_table(y~trend+fmls(x,12,12,nealmon),
-##'                      start=list(x=rep(0,3)),
+##' mlr <- hf_lags_table(y ~ trend + fmls(x, 12, 12,nealmon),
+##'                      start = list(x=rep(0,3)),
+##'                      data = list(y = y, x = x, trend = trend),
 ##'                      from=c(x=0),to=list(x=c(4,4)))
 ##' mlr
 ##'
 ##' @details This function estimates models sequentially increasing the midas lag from \code{kmin} to \code{kmax} of the last term of the given formula
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-hf_lags_table<- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hAh.test"),Ofunction="optim",user.gradient=FALSE,...) {
+hf_lags_table<- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hAh_test"),Ofunction="optim",weight_gradients=NULL, ...) {
 
     if(!identical(names(from),names(to)))stop("The names of lag structure start and end should be identical")
     from <- as.list(from)
@@ -76,7 +77,7 @@ hf_lags_table<- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hA
     start <- start[!(names(start)%in% varnames)]
     if(length(start)==0)start <- NULL
   
-    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,user.gradient=FALSE,...)
+    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,weight_gradients=weight_gradients,...)
 }
 
 ##' Create a low frequency lag selection table for MIDAS regression model
@@ -90,7 +91,7 @@ hf_lags_table<- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hA
 ##' @param IC the information criteria which to compute
 ##' @param test the names of statistical tests to perform on restricted model, p-values are reported in the columns of model selection table
 ##' @param Ofunction see \link{midasr}
-##' @param user.gradient see \link{midas_r}
+##' @param weight_gradients see \link{midas_r}
 ##' @param ... additional parameters to optimisation function, see \link{midas_r}
 ##' @return a \code{midas_r_ic_table} object which is the list with the following elements:
 ##'
@@ -113,7 +114,7 @@ hf_lags_table<- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hA
 ##' @details This function estimates models sequentially increasing the midas lag from \code{kmin} to \code{kmax} of the last term of the given formula
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-lf_lags_table <- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hAh.test"),Ofunction="optim",user.gradient=FALSE,...) {
+lf_lags_table <- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("hAh_test"),Ofunction="optim",weight_gradients=NULL,...) {
 
     if(!identical(names(from),names(to)))stop("The names of lag structure start and end should be identical")
     from <- as.list(from)
@@ -156,7 +157,7 @@ lf_lags_table <- function(formula,data,start,from,to,IC=c("AIC","BIC"),test=c("h
     start <- start[!(names(start)%in% varnames)]
     if(length(start)==0)start <- NULL
         
-    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,user.gradient=FALSE,...)
+    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,weight_gradients=weight_gradients,...)
 }
 
 last_term_info <- function(x,Zenv) {
@@ -182,18 +183,20 @@ last_term_info <- function(x,Zenv) {
 term_info <- function(mt,term.name,Zenv) {
     vars <- as.list(attr(mt,"variables"))[-1]
     term.no <- find_mls_terms(term.name,vars)
+
+    if(length(term.no)==0) stop("No mls terms for variable ", term.name)
+    if(length(term.no)>1) stop("There can be only one mls term for variable ", term.name)
     
-    last.term <- vars[[term.no]]
+    mls_term <- vars[[term.no]]
     
-    lags <- as.numeric(eval(last.term[[3]],Zenv))
-    freq <- as.numeric(eval(last.term[[4]],Zenv))
-    weightname <- as.character(last.term[[5]])
-    mtype <- as.character(last.term[[1]])
-  
-    if(!(mtype%in%c("fmls","dmls","mls")))stop("The last term in the formula must be a MIDAS lag term")
+    lags <- as.numeric(eval(mls_term[[3]],Zenv))
+    freq <- as.numeric(eval(mls_term[[4]],Zenv))
+    weightname <- as.character(mls_term[[5]])
+    mtype <- as.character(mls_term[[1]])
+      
     if(mtype=="fmls")lags <- 0:lags
 
-    list(lags=lags,weight=weightname,varname=as.character(last.term[[2]]),frequency=freq)  
+    list(lags=lags,weight=weightname,varname=as.character(mls_term[[2]]),frequency=freq)  
 }
 
 
@@ -255,7 +258,7 @@ modsel <- function(x,IC=x$IC[1],test=x$test[1],type=c("restricted","unrestricted
 ##' @param IC the information criteria which to compute
 ##' @param test the names of statistical tests to perform on restricted model, p-values are reported in the columns of model selection table
 ##' @param Ofunction see \link{midasr}
-##' @param user.gradient see \link{midas_r}
+##' @param weight_gradients see \link{midas_r}
 ##' @param ... additional parameters to optimisation function, see \link{midas_r}
 ##' @return a \code{midas_r_ic_table} object which is the list with the following elements:
 ##'
@@ -278,7 +281,7 @@ modsel <- function(x,IC=x$IC[1],test=x$test[1],type=c("restricted","unrestricted
 ##' @details This function estimates models sequentially increasing the midas lag from \code{kmin} to \code{kmax} of the last term of the given formula
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-weights_table <- function(formula,data,start=NULL,IC=c("AIC","BIC"),test=c("hAh.test"),Ofunction="optim",user.gradient=FALSE,...) {
+weights_table <- function(formula,data,start=NULL,IC=c("AIC","BIC"),test=c("hAh_test"),Ofunction="optim",weight_gradients=NULL,...) {
     
     Zenv <- new.env(parent=environment(formula))
     cl <- match.call()
@@ -298,9 +301,8 @@ weights_table <- function(formula,data,start=NULL,IC=c("AIC","BIC"),test=c("hAh.
     names(table) <- varnames
     start <- start[!(names(start) %in% varnames)]
     if(length(start)==0)start <- NULL
-    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,user.gradient=FALSE,...)
+    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,weight_gradients=weight_gradients,...)
 }
-
 
 ##' Create a weight and lag selection table for MIDAS regression model
 ##'
@@ -312,8 +314,8 @@ weights_table <- function(formula,data,start=NULL,IC=c("AIC","BIC"),test=c("hAh.
 ##' @param IC the names of information criteria which to compute
 ##' @param test the names of statistical tests to perform on restricted model, p-values are reported in the columns of model selection table
 ##' @param Ofunction see \link{midasr}
-##' @param user.gradient see \link{midas_r}
-##' @param showprogress logical, TRUE to show progress bar, FALSE for silent evaluation
+##' @param weight_gradients see \link{midas_r}
+##' @param show_progress logical, TRUE to show progress bar, FALSE for silent evaluation
 ##' @param ... additional parameters to optimisation function, see \link{midas_r}
 ##' @return a \code{midas_r_ic_table} object which is the list with the following elements:
 ##'
@@ -339,14 +341,8 @@ weights_table <- function(formula,data,start=NULL,IC=c("AIC","BIC"),test=c("hAh.
 ##'
 ##' @details This function estimates models sequentially increasing the midas lag from \code{kmin} to \code{kmax} and varying the weights of the last term of the given formula 
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
-##' @rdname midas_r_ic_table
 ##' @export
-midas_r_ic_table <- function(formula,...) UseMethod("midas_r_ic_table")
-
-#' @rdname midas_r_ic_table
-#' @method midas_r_ic_table default
-#' @export
-midas_r_ic_table.default <- function(formula,data=NULL,start=NULL,table,IC=c("AIC","BIC"),test=c("hAh.test"),Ofunction="optim",user.gradient=FALSE,showprogress=TRUE,...) {
+midas_r_ic_table <- function(formula,data=NULL,start=NULL,table,IC=c("AIC","BIC"),test=c("hAh_test"),Ofunction="optim",weight_gradients=NULL,show_progress=TRUE,...) {
     
     Zenv <- new.env(parent=environment(formula))
     formula <- as.formula(formula)
@@ -421,23 +417,36 @@ midas_r_ic_table.default <- function(formula,data=NULL,start=NULL,table,IC=c("AI
         mm$X <- mm$X[ind,]
         mm
     })
-       
+
+    new_cl <- cl
+    m <- match(c("table","IC","test","show_progress"),names(new_cl))
+    new_cl[m] <- NULL
+    
+    if("Ofunction" %in% names(new_cl)) new_cl$Ofunction<- eval(new_cl$Ofunction)
+    if("weight_gradients" %in% names(new_cl)) new_cl$weight_gradients <- eval(new_cl$weight_gradients)
+    if(is.null(eval(new_cl$data,parent.frame()))) new_cl$data <- NULL
+    
     mrm <- lapply(modellist,function(mm) {
-        res <- prepmidas_r(mm$y,mm$X,mm$mt,Zenv,cl,args,mm$start,Ofunction,user.gradient,mm$itr$lagsTable)
+        cll <- new_cl
+        cll[[1]] <- as.name("midas_r")
+        cll$formula <- formula(mm$mt)
+        environment(cll$formula) <- Zenv
+        cll$start <- mm$start
+        res <- prepmidas_r(mm$y,mm$X,mm$mt,Zenv,cll,args,mm$start,Ofunction,weight_gradients,mm$itr$lagsTable)
         class(res) <- "midas_r"
         res
     })
    
-    if(showprogress) {
+    if(show_progress) {
         cat("\nModel selection progress:\n")
         pb <- txtProgressBar(min=0,max=length(mrm),initial=0,style=3)
     }
     candlist <- mapply(function(l,i){
-       if(showprogress) setTxtProgressBar(pb, i)
-        out <- try(midas_r(l),silent=TRUE)
+       if(show_progress) setTxtProgressBar(pb, i)
+        out <- try(midas_r.fit(l),silent=TRUE)
         out        
     },mrm,1:length(mrm),SIMPLIFY=FALSE)
-    if(showprogress)close(pb)   
+    if(show_progress)close(pb)   
     success <- sapply(candlist,class)
 
     if("try-error" %in% success)
@@ -455,10 +464,10 @@ midas_r_ic_table.default <- function(formula,data=NULL,start=NULL,table,IC=c("AI
     make_ic_table(candl,IC,test)
 }
 
-##' @method midas_r_ic_table midas_r_ic_table
+##' @method update midas_r_ic_table
 ##' @export
-midas_r_ic_table.midas_r_ic_table <- function(formula,...) {
-    do.call("make_ic_table",formula[-1])
+update.midas_r_ic_table <- function(object,...) {
+    do.call("make_ic_table",object[-1])
 }
 
 make_ic_table <- function(candlist,IC,test,...) {
@@ -585,7 +594,7 @@ prepare_model_frame <- function(data,Zenv,cl,mf,pf) {
     mtt <- attr(mtf,"terms")
 
     #We need only response to get the number of low frequency observations.
-    resf <- mf$formula
+    resf <- eval(mf$formula,Zenv)
     resf[[3]] <- 1
     mf$formula <- resf
 
@@ -654,7 +663,9 @@ expand_weights_lags <- function(weights,from=0,to,m=1,start) {
 ##' @method print lws_table
 print.lws_table <- function(x,...) {
     if(is.null(names(x)))names(x) <- c("weights","lags","starts")
-    print(data.frame(weights=names(x$weights),lags=sapply(x$lags,deparse),starts=sapply(x$starts,deparse)))
+    p1 <- function(x)capture.output(cat(deparse(x)))
+    p2 <- function(x)capture.output(cat(deparse(round(x,4))))
+    print(data.frame(weights=names(x$weights),lags=sapply(x$lags,p1),starts=sapply(x$starts,p2)))
 }
 
 ##' Create table of weights, lags and starting values for Ghysels weight schema, see \link{amweights}
@@ -748,7 +759,7 @@ expand_amidas <- function(weight,type=c("A","B","C"),from=0,to,m,start) {
 ##' @param IC the names of information criteria which should be calculated
 ##' @param test the names of statistical tests to perform on restricted model, p-values are reported in the columns of model selection table
 ##' @param Ofunction see \link{midasr}
-##' @param user.gradient see \link{midas_r}
+##' @param weight_gradients see \link{midas_r}
 ##' @param ... additional parameters to optimisation function, see \link{midas_r}
 ##' @return a \code{midas_r_ic_table} object which is the list with the following elements:
 ##'
@@ -776,7 +787,7 @@ expand_amidas <- function(weight,type=c("A","B","C"),from=0,to,m,start) {
 ##' @details This function estimates models sequentially increasing the midas lag from \code{kmin} to \code{kmax} and varying the weights of the last term of the given formula 
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-amidas_table <- function(formula,data,weights,wstart,type,start=NULL,from,to,IC=c("AIC","BIC"),test=c("hAh.test"),Ofunction="optim",user.gradient=FALSE,...) {
+amidas_table <- function(formula,data,weights,wstart,type,start=NULL,from,to,IC=c("AIC","BIC"),test=c("hAh_test"),Ofunction="optim",weight_gradients=NULL,...) {
     Zenv <- new.env(parent=environment(formula))
     cl <- match.call()
     mf <- match.call(expand.dots = FALSE)
@@ -818,7 +829,7 @@ amidas_table <- function(formula,data,weights,wstart,type,start=NULL,from,to,IC=
     
     table <- list(do.call("+",tb))
     names(table) <- lti$varname
-    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,user.gradient=FALSE,...)
+    midas_r_ic_table(formula,data,start=start,table=table,IC=IC,test=test,Ofunction=Ofunction,weight_gradients = NULL,...)
 }
     
 
@@ -929,7 +940,7 @@ select_and_forecast<- function(formula,data,from,to,
                                weights,wstart,start=NULL,
                                IC="AIC",
                                seltype=c("restricted","unrestricted"),
-                               test="hAh.test",
+                               test="hAh_test",
                                ftype=c("fixed","recursive","rolling"),
                                measures=c("MSE","MAPE","MASE"),
                                fweights=c("EW","BICW","MSFE","DMSFE"),
@@ -940,7 +951,7 @@ select_and_forecast<- function(formula,data,from,to,
         stop("Supported weight schemes are EW, BICW, MSFE, DMSFE")
     }
     
-    Zenv <-  Zenv <- new.env(parent=environment(formula))
+    Zenv <- new.env(parent=environment(formula))
     formula <- as.formula(formula)
 
     if(missing(data)||is.null(data)) dataenv <- Zenv
@@ -949,7 +960,7 @@ select_and_forecast<- function(formula,data,from,to,
     ##Change this, there is a cleaner way
     mt <- terms(formula)
     yname <- all.vars(mt[[2]])       
-    m <- get_frequency_info(mt,Zenv)
+    m <- get_frequency_info(mt, Zenv)
     nms <- names(m)
     fullsample <- lapply(nms,function(nm)eval(as.name(nm),dataenv))
     names(fullsample) <- nms
@@ -984,7 +995,7 @@ select_and_forecast<- function(formula,data,from,to,
    
     bestm <- mapply(function(fh,prog)
                     mapply(function(tb,i){
-                        out <- modsel(midas_r_ic_table(formula,data=indata,start=start,table=tb,IC=IC,test=test,showprogress=FALSE),IC=IC,type=seltype,print=FALSE,...)
+                        out <- modsel(midas_r_ic_table(formula,data=indata,start=start,table=tb,IC=IC,test=test,show_progress=FALSE),IC=IC,type=seltype,print=FALSE,...)
                         setTxtProgressBar(pb, i)
                         out
                     },fh,as.list(prog+1:length(fh)),SIMPLIFY=FALSE),
@@ -1019,7 +1030,7 @@ MAPE <- function(o,p) {
 }
 
 MASE <- function(o,p) {
-    mean(abs(o-p)/mean(abs(diff(o))))
+    mean(abs(o-p)/mean(abs(diff(o))))    
 }
 ##' Splits mixed frequency data into in-sample and out-of-sample datasets given the indexes of the low frequency data
 ##'
@@ -1068,7 +1079,7 @@ split_data <- function(data,insample,outsample) {
 ##' @param type a string indicating which type of forecast to use. 
 ##' @param fweights names of weighting schemes
 ##' @param measures names of accuracy measures
-##' @param showprogress logical, TRUE to show progress bar, FALSE for silent evaluation
+##' @param show_progress logical, TRUE to show progress bar, FALSE for silent evaluation
 ##' @return a list containing forecasts and tables of accuracy measures
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
@@ -1097,7 +1108,12 @@ split_data <- function(data,insample,outsample) {
 ##'                         type="fixed",                            
 ##'                         measures=c("MSE","MAPE","MASE"),
 ##'                         fweights=c("EW","BICW","MSFE","DMSFE"))
-average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recursive","rolling"),fweights=c("EW","BICW","MSFE","DMSFE"),measures=c("MSE","MAPE","MASE"),showprogress=TRUE) {
+average_forecast <- function(modlist,
+                             data, insample, outsample,
+                             type = c("fixed", "recursive", "rolling"),
+                             fweights = c("EW", "BICW", "MSFE", "DMSFE"),
+                             measures = c("MSE", "MAPE", "MASE"),
+                             show_progress=TRUE) {
 
     #if(length(modlist)==1)stop("Need more than 1 model to produce average forecasts")
     if(missing(data))stop("Data need to be supplied for forecasting")
@@ -1120,29 +1136,17 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
 
     outy <- outdata[[yname]]
     
-    reeval <- function(candlist,redata) {
-        lapply(candlist,function(mod) {
-            ##Setup all the necessary info
-            if(inherits(mod,"midas_r_np")) {
-                do.call("midas_r_np",list(formula(mod),data=redata),envir=mod$Zenv)
-            } else {             
-                out <- do.call("midas_r",list(formula(mod),data=redata,start=mod$start.list,Ofunction="optim",method="BFGS",control=list(maxit=0)),envir=mod$Zenv)
-            ##Run optimisation with the original model settings
-                out$argmap.opt <- mod$argmap.opt
-                do.call("midas_r",list(out,start=coef(mod)),envir=out$Zenv)
-            }
-        })
+    reeval <- function(candlist, redata) {
+        lapply(candlist, update, data = redata) 
     }
 
     bestm <- reeval(modlist,indata)
     
     inf <- lapply(bestm,function(mod) cbind(mod$model[,1],fitted(mod)))
-    
-   
-
+       
     if(type=="fixed") {
         outf <- lapply(bestm,function(mod)                  
-                       cbind(outdata[[yname]],forecast.midas_r(mod,newdata=outdata,method="static"))
+                       cbind(outdata[[yname]],point_forecast.midas_r(mod,newdata=outdata,method="static"))
                        )       
     }
     else {
@@ -1150,7 +1154,7 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
             fulls <- c(insample,outsample)            
         }
         outm <- matrix(NA,nrow=length(outsample),ncol=length(modlist))
-        if(showprogress) {
+        if(show_progress) {
             cat("\nDoing", type, "forecast :\n")    
             pb <- txtProgressBar(min=0,max=length(outsample),initial=0,style=3)
         }
@@ -1166,15 +1170,15 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
             else newin <- insample
             splitnew <- split_data(data,newin,newout)
             emod <- reeval(modlist,splitnew$indata)
-            outm[i,] <- sapply(emod,forecast.midas_r,newdata=splitnew$outdata,method="static")
-            if(showprogress) setTxtProgressBar(pb, i)
+            outm[i,] <- sapply(emod,point_forecast.midas_r,newdata=splitnew$outdata,method="static")
+            if(show_progress) setTxtProgressBar(pb, i)
         }
         if(length(modlist)>1) {
             outf <- lapply(data.frame(outm),function(x)cbind(outdata[[yname]],x))}
         else {
             outf <- list(cbind(outdata[[yname]],outm[,1]))
         }
-        if(showprogress)close(pb)
+        if(show_progress)close(pb)
     }
     
     msrfun <- lapply(measures,function(msr)eval(as.name(msr)))
@@ -1241,6 +1245,10 @@ average_forecast<- function(modlist,data,insample,outsample,type=c("fixed","recu
          avgforecast=sapply(outc,function(m)m[,2]),
          accuracy=list(
              individual=tabfh,
-             average=tabh))
+             average=tabh),
+         type = type,
+         x = indata[[yname]],
+         xout = outdata[[yname]]
+         )
 }
 

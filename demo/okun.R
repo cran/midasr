@@ -11,7 +11,7 @@ x <- window(diff(USunempr),start=1949)
 trend <- 1:length(y)
 
 allk <- lapply(c(12,15,18,24)-1, function(k) {
-  midas_r(midas_r(y~trend+fmls(x,k,12,nealmon),start=list(x=rep(0,3))),Ofunction="nls")
+  update(midas_r(y~trend+fmls(x,k,12,nealmon),start=list(x=rep(0,3))),Ofunction="nls")
 })
                                                 
 ####Compute the derivative test                
@@ -27,10 +27,10 @@ sapply(dtest,with,second)
 sapply(dtest,with,min(eigenval))
 
 ###Apply hAh test
-lapply(allk,hAh.test)
+lapply(allk,hAh_test)
 
 ###Apply robust hAh test
-lapply(allk,hAhr.test)
+lapply(allk,hAhr_test)
 
 ###View summaries
 lapply(allk,summary)
@@ -39,17 +39,9 @@ lapply(allk,summary)
 dev.new()
 par(mfrow=c(2,2))
 
-lapply(allk,function(x){
-    cfur <- coef(x$unrestricted)
-    cfur <- cfur[grep("fmls",names(cfur))]
-    cfre <- weight_coef(x)
-    k <- length(cfur)
-    sdval <- sqrt(diag(vcovHAC(x$unrestricted)))
-    sdval <- sdval[grep("fmls",names(sdval))]
 
-    plot(0:(k-1),cfur,col="black",ylab="Beta coefficients",xlab="h")
-    title(main=sprintf("d = %.0f: p-val.(hAh_HAC) < %.2f", k, max(hAhr.test(x)$p.value, 0.01)), cex.main = 1, font.main = 4, col.main = "black")
-    points(c(0:(k - 1)), cfre, type = "l", col = "blue")
-    points(c(0:(k - 1)), cfur + 2 * sdval[1:k], type = "l", col = "red", lty = 2)
-    points(c(0:(k - 1)), cfur - 2 * sdval[1:k], type = "l", col = "red", lty = 2)
+plot_info <- lapply(allk,function(x){
+    k <- length(coef(x,midas=TRUE,term="x"))
+    ttl <- sprintf("d = %.0f: p-val.(hAh_HAC) < %.2f", k, max(hAhr_test(x)$p.value, 0.01))
+    plot_midas_coef(x,title=ttl)
 })

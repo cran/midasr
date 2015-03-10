@@ -6,55 +6,54 @@
 ##' @return a \code{htest} object
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @references Kvedaras V., Zemlys, V. \emph{Testing the functional constraints on parameters in regressions with variables of different frequency} Economics Letters 116 (2012) 250-254
-##' @seealso hAhr.test
+##' @seealso hAhr_test
 ##' @examples
 ##' ##The parameter function
-##' theta.h0 <- function(p, dk, ...) {
+##' theta_h0 <- function(p, dk, ...) {
 ##'    i <- (1:dk-1)
 ##'    (p[1] + p[2]*i)*exp(p[3]*i + p[4]*i^2)
 ##' }
 ##'
 ##' ##Generate coefficients
-##' theta0 <- theta.h0(c(-0.1,0.1,-0.1,-0.001),4*12)
+##' theta0 <- theta_h0(c(-0.1,0.1,-0.1,-0.001),4*12)
 ##'
 ##' ##Plot the coefficients
 ##' plot(theta0)
 ##'
 ##' ##Generate the predictor variable
 ##' set.seed(13)
-##' x <- simplearma.sim(list(ar=0.6),1500*12,1,12)
+##' 
+##' xx <- ts(arima.sim(model = list(ar = 0.6), 600 * 12), frequency = 12)
 ##'
 ##' ##Simulate the response variable
-##' y <- midas.sim(500,theta0,x,1)
+##' y <- midas_sim(500, xx, theta0)
 ##'
-##' ##Remove unnecessary history of x
-##' x <- window(x,start=start(y))
-##' 
+##' x <- window(xx, start=start(y))
 ##' ##Fit restricted model
-##' mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,list(y=y,x=x),
+##' mr <- midas_r(y~fmls(x,4*12-1,12,theta_h0)-1,list(y=y,x=x),
 ##'               start=list(x=c(-0.1,0.1,-0.1,-0.001)))
 ##'
 ##' ##Perform test (the expected result should be the acceptance of null)
 ##'
-##' hAh.test(mr)
+##' hAh_test(mr)
 ##' 
 ##' ##Fit using gradient function
 ##'
 ##' ##The gradient function
-##' theta.h0.gradient<-function(p, dk,...) {
+##' theta_h0_gradient<-function(p, dk,...) {
 ##'    i <- (1:dk-1)
 ##'    a <- exp(p[3]*i + p[4]*i^2)
 ##'    cbind(a, a*i, a*i*(p[1]+p[2]*i), a*i^2*(p[1]+p[2]*i))
 ##' }
 ##'
-##' mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,list(y=y,x=x),
+##' mr <- midas_r(y~fmls(x,4*12-1,12,theta_h0)-1,list(y=y,x=x),
 ##'               start=list(x=c(-0.1,0.1,-0.1,-0.001)),
-##'               user.gradient=TRUE)
+##'               weight_gradients=list())
 ##'
 ##' ##The test will use an user supplied gradient of weight function. See the
 ##' ##help of midas_r on how to supply the gradient.
 ##' 
-##' hAh.test(mr)
+##' hAh_test(mr)
 ##'
 ##' 
 ##' @details  Given MIDAS regression:
@@ -67,7 +66,7 @@
 ##' where \eqn{h=0,...,(k+1)m}. 
 ##' @export
 ##' @import numDeriv
-hAh.test <- function(x) {
+hAh_test <- function(x) {
 
     prep <- prep_hAh(x)
     
@@ -95,37 +94,36 @@ hAh.test <- function(x) {
 ##' @return a \code{htest} object
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @references Kvedaras V., Zemlys, V. \emph{The statistical content and empirical testing of the MIDAS restrictions}
-##' @seealso hAh.test
+##' @seealso hAh_test
 ##' @examples
 ##'##The parameter function
-##' theta.h0 <- function(p, dk, ...) {
+##' theta_h0 <- function(p, dk, ...) {
 ##'    i <- (1:dk-1)
 ##'    (p[1] + p[2]*i)*exp(p[3]*i + p[4]*i^2)
 ##' }
 ##'
 ##' ##Generate coefficients
-##' theta0 <- theta.h0(c(-0.1,0.1,-0.1,-0.001),4*12)
+##' theta0 <- theta_h0(c(-0.1,0.1,-0.1,-0.001),4*12)
 ##'
 ##' ##Plot the coefficients
 ##' plot(theta0)
 ##'
 ##' ##Generate the predictor variable
 ##' set.seed(13)
-##' x <- simplearma.sim(list(ar=0.6),1500*12,1,12)
+##' 
+##' xx <- ts(arima.sim(model = list(ar = 0.6), 600 * 12), frequency = 12)
 ##'
 ##' ##Simulate the response variable
-##' y <- midas.sim(500,theta0,x,1)
+##' y <- midas_sim(500, xx, theta0)
 ##'
-##' ##Remove unnecessary history of x
-##' x <- window(x,start=start(y))
-##' 
+##' x <- window(xx, start=start(y))
 ##' ##Fit restricted model
-##' mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,
+##' mr <- midas_r(y~fmls(x,4*12-1,12,theta_h0)-1,
 ##'               list(y=y,x=x),
 ##'               start=list(x=c(-0.1,0.1,-0.1,-0.001)))
 ##' 
 ##' ##The gradient function
-##' theta.h0.gradient <-function(p, dk,...) {
+##' theta_h0_gradient <-function(p, dk,...) {
 ##'    i <- (1:dk-1)
 ##'    a <- exp(p[3]*i + p[4]*i^2)
 ##'    cbind(a, a*i, a*i*(p[1]+p[2]*i), a*i^2*(p[1]+p[2]*i))
@@ -133,15 +131,15 @@ hAh.test <- function(x) {
 ##'
 ##' ##Perform test (the expected result should be the acceptance of null)
 ##'
-##' hAhr.test(mr)
+##' hAhr_test(mr)
 ##' 
-##' mr <- midas_r(y~fmls(x,4*12-1,12,theta.h0)-1,
+##' mr <- midas_r(y~fmls(x,4*12-1,12,theta_h0)-1,
 ##'               list(y=y,x=x),
 ##'               start=list(x=c(-0.1,0.1,-0.1,-0.001)),
-##'               user.gradient=TRUE)
+##'               weight_gradients=list())
 ##'
 ##' ##Use exact gradient. Note the 
-##' hAhr.test(mr)
+##' hAhr_test(mr)
 ##' 
 ##' @details  Given MIDAS regression:
 ##'
@@ -154,7 +152,7 @@ hAh.test <- function(x) {
 ##' @export
 ##' @importFrom MASS ginv
 ##' @import sandwich
-hAhr.test <- function(x,PHI=vcovHAC(x$unrestricted,sandwich=FALSE)) {
+hAhr_test <- function(x,PHI=vcovHAC(x$unrestricted,sandwich=FALSE)) {
     prep <- prep_hAh(x)
     
     unrestricted <- x$unrestricted
@@ -178,13 +176,13 @@ hAhr.test <- function(x,PHI=vcovHAC(x$unrestricted,sandwich=FALSE)) {
 }
 
 
-##' Calculate data for \link{hAh.test} and \link{hAhr.test}
+##' Calculate data for \link{hAh_test} and \link{hAhr_test}
 ##'
-##' Workhorse function for calculating necessary matrices for \link{hAh.test} and \link{hAhr.test}. Takes the same parameters as \link{hAh.test}
+##' Workhorse function for calculating necessary matrices for \link{hAh_test} and \link{hAhr_test}. Takes the same parameters as \link{hAh_test}
 ##' @param x \code{midas_r} object
 ##' @return a list with necessary matrices
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
-##' @seealso hAh.test, hAhr.test
+##' @seealso hAh_test, hAhr_test
 prep_hAh <- function(x) {
 
     unrestricted <- x$unrestricted
@@ -204,7 +202,7 @@ prep_hAh <- function(x) {
 
     cfur <- coef(unrestricted)
    
-    h.0 <- P%*%(cfur-x$midas.coefficients)
+    h.0 <- P%*%(cfur-x$midas_coefficients)
 
     Delta.0 <- D0%*%tcrossprod(ginv(crossprod(D0,XtX)%*%D0),D0)
     
@@ -234,31 +232,31 @@ prep_hAh <- function(x) {
 ##' agk.test(mr)
 ##'
 agk.test <- function(x) {
-    tl <- attributes(x$terms)$term.labels
-    wn <- grep("nealmon",tl,value=TRUE)   
-    if(length(wn)==0)stop("This test can be only used for regressions with normalized Exponential Almon lag weights")    
+
+    weight_names<- sapply(x$term_info,"[[","weight_name")
+    nealmon_indices<- grep("nealmon",weight_names)
+    
+    if(length(nealmon_indices)==0)stop("This test can be only used for regressions with normalized Exponential Almon lag weights")    
     X <- x$model[,-1]
     y <- x$model[,1]
-    if(attr(x$terms,"intercept")==1) tl <- c("(Intercept)",tl)
-    Xa <- lapply(tl,function(nm) {
-        if(nm %in% wn) {       
-            apply(X[,grep(wn,colnames(X),fixed=TRUE)],1,mean)
+               
+    Xa <- lapply(x$term_info,function(ti) {        
+        if(ti$weight_name == "nealmon") {       
+            apply(X[,ti$midas_coef_index],1,mean)
         }
         else {
-            X[,nm,drop=FALSE]
+            X[,ti$midas_coef_index,drop=FALSE]
         }
     })
     Xa <- do.call("cbind",Xa)
    
     ustar <- residuals(lm(y~Xa-1))
     u <- residuals(x)
-    w <- weight_param(x)
-    if(is.list(w)) {
-        r <- sum(sapply(w,length))
-    }
-    else {
-        r <- length(w)
-    }
+    
+    w <- x$maps$coef[names(x$weights)]
+    w <- lapply(x$term_info[nealmon_indices],"[[","coef_map")
+    r <- sum(sapply(w,length))
+        
     S.LS <- sum(ustar^2)
     S.M <- sum(u^2)
       

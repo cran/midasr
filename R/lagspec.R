@@ -34,9 +34,13 @@ nealmon <- function(p,d,m) {
   as.vector(p[1] * exp(plc)/sum(exp(plc)))
 }
 
+
 ##' Produces weights for aggregates based MIDAS regression
 ##'
-##' Given a weight function \eqn{w(\beta,\theta)} which has a property of being defined as \eqn{\beta g(\theta)} the following combinations are defined, corresponding to structure types \code{A}, \code{B} and \code{C} respectively:
+##' Suppose a weight function \eqn{w(\beta,\theta)} satisfies the following equation:
+##' \deqn{w(\beta,\theta)=\beta g(\theta)}
+##' 
+##' The following combinations are defined, corresponding to structure types \code{A}, \code{B} and \code{C} respectively:
 ##' \deqn{(w(\beta_1,\theta_1),...,w(\beta_k,\theta_k))}
 ##' \deqn{(w(\beta_1,\theta),...,w(\beta_k,\theta))}
 ##' \deqn{\beta(w(1,\theta_1),...,w(1,\theta_k))}
@@ -49,7 +53,7 @@ nealmon <- function(p,d,m) {
 ##' 
 ##' @title Weights for aggregates based MIDAS regressions
 ##' @param p parameters for weight functions, see details.
-##' @param d number of lags
+##' @param d number of high frequency lags
 ##' @param m the frequency
 ##' @param weight the weight function
 ##' @param type type of structure, a string, one of A, B or C.
@@ -83,7 +87,7 @@ amweights <- function(p,d,m,weight=nealmon,type=c("A","B","C")) {
 ##' @return the gradient matrix
 ##' @author Vaidotas Zemlys
 ##' @export
-nealmon.gradient <- function(p,d,m) {
+nealmon_gradient <- function(p,d,m) {
     i <- 1:d
     pl <- poly(i,degree=length(p)-1,raw=TRUE)
     eplc <- exp(pl%*%p[-1])[,,drop=TRUE]
@@ -112,8 +116,8 @@ nbeta <- function(p,d,m) {
 ##' @return vector of coefficients
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-nbeta.gradient <- function(p,d,m) {
-    nbetaMT.gradient(c(p,0),d,m)[,1:3]
+nbeta_gradient <- function(p,d,m) {
+    nbetaMT_gradient(c(p,0),d,m)[,1:3]
 }
 
 
@@ -148,7 +152,7 @@ nbetaMT <- function(p,d,m) {
 ##' @return vector of coefficients
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
-nbetaMT.gradient <- function(p,d,m) {
+nbetaMT_gradient <- function(p,d,m) {
     eps <- .Machine$double.eps
     xi <- (1:d-1)/(d-1)
     xi[1] <- xi[1]+eps
@@ -194,7 +198,7 @@ almonp <- function(p,d,m) {
 ##' @return vector of coefficients
 ##' @author Vaidotas Zemlys
 ##' @export
-almonp.gradient <- function(p,d,m) {
+almonp_gradient <- function(p,d,m) {
     i <- 1:d
     plc <- poly(i,degree=length(p)-1,raw=TRUE)
     cbind(1,plc)
@@ -226,7 +230,7 @@ polystep <- function(p,d,m,a) {
 ##' @return vector of coefficients
 ##' @author Vaidotas Zemlys
 ##' @export
-polystep.gradient <- function(p,d,m,a) {
+polystep_gradient <- function(p,d,m,a) {
     if(length(a)!=length(p)-1)stop("The number of steps should be number of parameters minus one")
     if(min(a)<=1 | max(a)>=d)stop("The steps are out of bounds")
     a <- c(0,a,d)
@@ -261,7 +265,7 @@ gompertzp <- function(p, d, m) {
 ##' @return vector of coefficients
 ##' @author Julius Vainora
 ##' @export
-gompertzp.gradient <- function(p, d, m) {
+gompertzp_gradient <- function(p, d, m) {
   i <- 1:d / d
   gm <- exp(p[3] * i - p[2] * exp(p[3] * i))
   dp2 <- -gm * exp(i * p[3])
@@ -292,7 +296,7 @@ nakagamip <- function(p, d, m) {
 ##' @return vector of coefficients
 ##' @author Julius Vainora
 ##' @export
-nakagamip.gradient <- function(p, d, m) {
+nakagamip_gradient <- function(p, d, m) {
   i <- 1:d / d
   ng <- i^(2 * p[2] - 1) * exp(-p[2] / p[3] * i^2)
   dp2 <- ((2 * log(i) * p[3] - i^2) / p[3]) * ng
@@ -323,7 +327,7 @@ lcauchyp <- function(p, d, m) {
 ##' @return vector of coefficients
 ##' @author Julius Vainora
 ##' @export
-lcauchyp.gradient <- function(p, d, m) {
+lcauchyp_gradient <- function(p, d, m) {
   i <- 1:d / d
   lc <- 1 / (i * ((log(i) - p[2])^2 + p[3]^2))
   dp2 <- 2 * lc^2 * i * (log(i) - p[2])
@@ -362,7 +366,7 @@ harstep <- function(p,d,m) {
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @references Corsi, F., \emph{A Simple Approximate Long-Memory Model of Realized Volatility}, Journal of Financial Econometrics Vol. 7 No. 2 (2009) 174-196 
 ##' @export
-harstep.gradient <- function(p,d,m) {
+harstep_gradient <- function(p,d,m) {
    if(d!=20) stop("HAR(3)-RV process requires 20 lags")
    out <- matrix(0,ncol=3,nrow=d)
    out[1,1] <- 1
