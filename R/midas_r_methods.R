@@ -43,7 +43,7 @@ deviance.midas_r <- function(object,...) {
 ##' 
 ##' ##Historical values taken into account
 ##' forecast(mr, list(x = xn))
-##'
+##' @importFrom stats fitted delete.response coef
 ##' @export
 predict.midas_r <- function(object, newdata, na.action = na.omit, ... ) {
     Zenv <- new.env(parent=parent.frame())
@@ -79,6 +79,7 @@ predict.midas_r <- function(object, newdata, na.action = na.omit, ... ) {
 predict.midas_u <- predict.midas_r
 
 ##' @export
+##' @importFrom stats deviance pt pnorm residuals printCoefmat
 ##' @method summary midas_r
 summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) {
     r <- as.vector(residuals(object))
@@ -136,7 +137,7 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
     param <- cbind(param,se,tval,pval)
     dimnames(param) <- list(pnames, c("Estimate", "Std. Error", 
         "t value", "Pr(>|t|)"))
-    ans <- list(formula=formula(object$terms),residuals=r,sigma=sqrt(resvar),
+    ans <- list(formula=formula(object$terms), residuals=r, sigma=sqrt(resvar),
                 df=c(p,rdf), cov.unscaled=XDtXDinv, call=object$call,
                 coefficients=param,midas_coefficients=coef(object, midas = TRUE),
                 r_squared = r_squared, adj_r_squared = adj_r_squared)
@@ -179,12 +180,6 @@ estfun.midas_r <- function(x,...) {
     rval
 }
 
-##' @export
-##' @method vcov midas_r
-vcov.midas_r <- function(x,...) {
-    sm <- summary(object)
-    sm$cov.unscaled * sm$sigma^2
-}
 
 ##' @export
 ##' @method bread midas_r
@@ -385,7 +380,7 @@ static_forecast <- function(object, h, insample, outsample, yname) {
 ##' ##Forecast horizon
 ##' h <- 3
 ##' ##Declining unemployment
-##' xn <- rep(-0.1, 12*3)
+##' xn <- rep(-0.1, 12*h)
 ##' ##New trend values
 ##' trendn <- length(y) + 1:h
 ##' 
@@ -405,7 +400,7 @@ static_forecast <- function(object, h, insample, outsample, yname) {
 ##' fmr
 ##' summary(fmr)
 ##' plot(fmr)
-##' 
+##' @importFrom stats na.pass predict ts end quantile window as.ts deltat tsp
 ##' @export 
 forecast.midas_r <- function(object, newdata=NULL, se = FALSE, level=c(80,95),
                              fan=FALSE, npaths=999,
@@ -435,16 +430,22 @@ forecast.midas_r <- function(object, newdata=NULL, se = FALSE, level=c(80,95),
         lower <- NULL
         upper <- NULL
     }
-    xout <- object$model[, 1]
-    if(add_ts_info) {
-        xstart <- 1
-        if(!is.null(rownames(object$model))) {
-            xstart <- as.numeric(rownames(object$model)[1])
-            if(is.na(xstart)) xstart <- 1
-            }
-        xout <- ts(xout, start = xstart, frequency = 1)
-        pred <- ts(pred, start = end(xout)+1, frequency = 1)
+    xout <- object$lhs
+    if(inherits(xout, "ts")) {
+        st <- tsp(as.ts(xout))[2L]
+        dt <- deltat(xout)
+        pred <- ts(pred, start = st + dt, frequency = frequency(xout))
+    } else {
+        if(add_ts_info) {
+            xstart <- 1
+            if(!is.null(rownames(object$model))) {
+                xstart <- as.numeric(rownames(object$model)[1])
+                if(is.na(xstart)) xstart <- 1
+                }
+            xout <- ts(xout, start = xstart, frequency = 1)
+            pred <- ts(pred, start = end(xout)[1]+1, frequency = 1)
         }
+    }
     return(structure(list(method = paste0("MIDAS regression forecast (",method,")"),
                           model = object,
                           level = level,
@@ -599,6 +600,7 @@ NULL
 ##' mr <- midas_r(y ~ trend + fmls(x, 23, 12, nealmon), start = list(x = rep(0, 3)))
 ##' 
 ##' plot_midas_coef(mr)
+##' @importFrom graphics plot points
 ##' @export
 plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, unrestricted = x$unrestricted, ...) {
     if(is.null(term_name)) {
@@ -612,17 +614,16 @@ plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, u
     }
     ti <- x$term_info[[term_name]]
     mcoef <- coef(x, midas = TRUE)[ti$midas_coef_index]
-    k <- length(mcoef)
+    lag_struct <- ti$lag_structure
     
     if(is.null(unrestricted)) {
         pd <- data.frame(restricted = mcoef, unrestricted=NA, lower=NA,upper=NA)
-        plot(0:(k-1), pd$restricted, col = "blue", ylab = "MIDAS coefficients", xlab="High frequency lag", type="l")
+        plot(lag_struct, pd$restricted, col = "blue", ylab = "MIDAS coefficients", xlab="High frequency lag", type="l")
         if(is.null(title)) {
             title(main = paste0("MIDAS coefficients for term ",term_name,": ",ti$weight_name))
         } else title(main = title)     
     } else {
         ucoef <- coef(unrestricted)[ti$midas_coef_index]        
-        k <- length(mcoef)
         sdval <- sqrt(diag(vcov.(unrestricted, ...)))
         sdval <- sdval[ti$midas_coef_index]
         
@@ -630,13 +631,13 @@ plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, u
     
         ylim <- range(c(pd[,1],pd[,2],pd[,3],pd[,4]))
     
-        plot(0:(k-1), pd$unrestricted, col="black", ylab="MIDAS coefficients", xlab="High frequency lag", ylim = ylim)
+        plot(lag_struct, pd$unrestricted, col="black", ylab="MIDAS coefficients", xlab="High frequency lag", ylim = ylim)
         if(is.null(title)) {
             title(main = paste0("MIDAS coefficients for term ",term_name,": ",ti$weight_name, " vs unrestricted"))
         } else title(main = title)
-        points(c(0:(k - 1)), pd$restricted, type = "l", col = "blue")    
-        points(c(0:(k - 1)), pd$lower, type = "l", col = "red", lty = 2)
-        points(c(0:(k - 1)), pd$upper, type = "l", col = "red", lty = 2)
+        points(lag_struct, pd$restricted, type = "l", col = "blue")    
+        points(lag_struct, pd$lower, type = "l", col = "red", lty = 2)
+        points(lag_struct, pd$upper, type = "l", col = "red", lty = 2)
     }
     invisible(pd)
 }

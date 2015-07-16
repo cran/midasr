@@ -27,6 +27,7 @@
 ##' \deqn{\theta_{h}=\delta\frac{\exp(\lambda_1(h+1)+\dots+\lambda_r(h+1)^r)}{\sum_{s=0}^d\exp(\lambda_1(s+1)+\dots+\lambda_r(h+1)^r)}}
 ##'
 ##' The parameter \eqn{\delta} should be the first element in vector \code{p}. The degree of the polynomial is then decided by the number of the remaining parameters.
+##' @importFrom stats poly
 ##' @export
 nealmon <- function(p,d,m) {
   i <- 1:d
@@ -373,4 +374,51 @@ harstep_gradient <- function(p,d,m) {
    out[1:5,2] <- 1/5
    out[1:20,3] <- 1/20
    out
+}
+
+
+#' Calculates the MIDAS coefficients for generalized exponential MIDAS lag specification
+#'
+#' Generalized exponential MIDAS lag specification is a generalization of exponential
+#' Almon lag. It is defined as a product of first order polynomial with exponent 
+#' of the second order polynomial. This spefication was used by V. Kvedaras and 
+#' V. Zemlys (2012).
+#' 
+#' @title Generalized exponential MIDAS coefficients
+#' @param p a vector of parameters
+#' @param d number of coefficients
+#' @param m the frequency, currently ignored
+#'
+#' @return a vector of coefficients
+#' @export
+#' @author Virmantas Kvedaras, Vaidotas Zemlys
+#' @references Kvedaras V., Zemlys, V. \emph{Testing the functional constraints on parameters in regressions with variables of different frequency} Economics Letters 116 (2012) 250-254
+genexp <- function(p, d, m) {
+    i <- (1:d-1)/100
+    pol <- p[3]*i + p[4]*i^2
+    (p[1] + p[2]*i)*exp(pol)
+}
+
+#' Calculates the gradient of generalized exponential MIDAS lag specification
+#'
+#' Generalized exponential MIDAS lag specification is a generalization of exponential
+#' Almon lag. It is defined as a product of first order polynomial with exponent 
+#' of the second order polynomial. This spefication was used by V. Kvedaras and 
+#' V. Zemlys (2012).
+#' 
+#' @title Gradient of feneralized exponential MIDAS coefficient generating function
+#' @param p a vector of parameters
+#' @param d number of coefficients
+#' @param m the frequency, currently ignored
+#'
+#' @return a vector of coefficients
+#' @export
+#' @author Virmantas Kvedaras, Vaidotas Zemlys
+#' @references Kvedaras V., Zemlys, V. \emph{Testing the functional constraints on parameters in regressions with variables of different frequency} Economics Letters 116 (2012) 250-254
+genexp_gradient <- function(p, d, m) {
+    i <- (1:d-1)/100
+    pol <- p[3]*i + p[4]*i^2
+    pol0 <- p[1] + p[2]*i
+    epl <- exp(pol)
+    cbind(epl, epl*i, pol0*epl*i, pol0*epl*i^2)
 }

@@ -355,7 +355,7 @@ midas_r_ic_table <- function(formula,data=NULL,start=NULL,table,IC=c("AIC","BIC"
 
     Zenv <- prep$Zenv
     mff <- prep$mf
-    isstar <- any(sapply(table,with,any(names(weights)=="*")))
+    isstar <- any(sapply(table, function(l)any(names(l[["weights"]]) == "*")))
     
     ##Remove those formulas for which the number of parameters is less or equal than number of lags.
     remove_incomplete <- function(info,nm) {
@@ -1082,6 +1082,7 @@ split_data <- function(data,insample,outsample) {
 ##' @param show_progress logical, TRUE to show progress bar, FALSE for silent evaluation
 ##' @return a list containing forecasts and tables of accuracy measures
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
+##' @importFrom utils setTxtProgressBar txtProgressBar capture.output
 ##' @export
 ##' @examples
 ##' set.seed(1001)  

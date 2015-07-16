@@ -66,6 +66,7 @@
 ##' where \eqn{h=0,...,(k+1)m}. 
 ##' @export
 ##' @import numDeriv
+##' @importFrom stats pchisq
 hAh_test <- function(x) {
 
     prep <- prep_hAh(x)
@@ -218,6 +219,7 @@ prep_hAh <- function(x) {
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @references Andreou E., Ghysels E., Kourtellos A. \emph{Regression models with mixed sampling frequencies} Journal of Econometrics 158 (2010) 246-261 
 ##' @export
+##' @importFrom stats lm
 ##' @examples
 ##' ##' ##Load data
 ##' data("USunempr")
