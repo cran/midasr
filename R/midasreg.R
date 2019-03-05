@@ -215,8 +215,9 @@ midas_u <- function(formula, data ,...) {
 ##' the MIDAS regression.
 ##'
 ##' @importFrom stats as.formula formula model.matrix model.response terms lsfit time
+##' @importFrom zoo index index2char
 ##' @export
-midas_r <- function(formula, data, start, Ofunction="optim", weight_gradients=NULL,...) {
+midas_r <- function(formula, data, start, Ofunction="optim", weight_gradients=NULL, ...) {
 
     Zenv <- new.env(parent=environment(formula))
 
@@ -251,34 +252,42 @@ midas_r <- function(formula, data, start, Ofunction="optim", weight_gradients=NU
     mf <- eval(mf,Zenv)
     mt <- attr(mf, "terms")
     args <- list(...)
-    y <- model.response(mf, "numeric")
+    y <- as.numeric(model.response(mf, "numeric"))
     X <- model.matrix(mt, mf)
     
-    #Save ts information
+    #Save ts/zoo information
     if(is.null(ee)) { 
         yy <- eval(formula[[2]], Zenv)
     }else {
         yy <- eval(formula[[2]], ee)
     }
     
+    y_index <- 1:length(yy) 
+    if(!is.null(attr(mf, "na.action"))) {
+        y_index <- y_index[-attr(mf, "na.action")]
+    }
+    if(length(y_index)>1) {
+        if(sum(abs(diff(y_index) - 1))>0) warning("There are NAs in the middle of the time series")                
+    }
+    
+    ysave <- yy[y_index]
+    
     if(inherits(yy, "ts")) {
-        y_index <- 1:length(yy) 
-        if(!is.null(attr(mf, "na.action"))) {
-            y_index <- y_index[-attr(mf, "na.action")]
-        }
-        if(length(y_index)>1) {
-            if(sum(abs(diff(y_index) - 1))>0) warning("There are NAs in the middle of the time series")                
-        }
-        ysave <- yy[y_index]
         class(ysave) <- class(yy)
         attr(ysave, "tsp") <- c(time(yy)[range(y_index)], frequency(yy))
-    } else {
-        ysave <- yy
     }
         
+    if(inherits(yy,c("zoo","ts"))) {
+        y_start <- index2char(index(ysave)[1], frequency(ysave))
+        y_end <- index2char(index(ysave)[length(ysave)], frequency(ysave))
+    } else {
+        y_start <- y_index[1]
+        y_end <- y_index[length(y_index)]
+    }
+    
     prepmd <- prepmidas_r(y,X,mt,Zenv,cl,args,start,Ofunction,weight_gradients,itr$lagsTable)
     
-    prepmd <- c(prepmd, list(lhs = ysave))
+    prepmd <- c(prepmd, list(lhs = ysave, lhs_start = y_start, lhs_end = y_end))
     
     class(prepmd) <- "midas_r"
     
@@ -382,7 +391,10 @@ midas_r.fit <- function(x) {
     args <- x$argmap_opt
     function.opt <- args$Ofunction
     args$Ofunction <- NULL
-    if(function.opt=="optim" | function.opt=="spg") {  
+   
+    if(!(function.opt %in% c("optim","spg","optimx","lm","nls","dry_run"))) 
+        stop("The optimisation function is not in the supported functions list. Please see the midasr:::midas_r.fit code for the supported function list")
+    if(function.opt == "optim" | function.opt =="spg") {  
         args$par <- x$start_opt
         args$fn <- x$fn0
         if(x$use_gradient) {
@@ -439,6 +451,11 @@ midas_r.fit <- function(x) {
         names(par) <- names(coef(x))
         x$convergence <- opt$convInfo$stopCode
     }
+    if(function.opt == "dry_run") {
+        opt <- NULL
+        par <- x$start_opt
+    }
+    
     x$opt <- opt
     x$coefficients <- par
     names(par) <- NULL
@@ -463,7 +480,7 @@ midas_r.fit <- function(x) {
 ## unrestricted the unrestricted model
 ## guess_start if TRUE, get the initial values for non-MIDAS terms via OLS, if FALSE, initialize them with zero.
 ## Vaidotas Zemlys
-prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradients, lagsTable, unrestricted = NULL, guess_start = TRUE) {
+prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradients, lagsTable, unrestricted = NULL, guess_start = TRUE, tau = NULL) {
 
     start <- start[!sapply(start,is.null)]
     if(is.null(weight_gradients)) use_gradient <- FALSE
@@ -483,33 +500,53 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
         start <- 0
         freq <- 1
         lagstruct <- 0
-        if(term_name %in% c("mls", "fmls", "dmls")) {
+        if(term_name %in% c("mls", "fmls", "dmls","mlsd")) {
             type <- term_name
             term_name <- as.character(fr[[2]])
-            freq <- eval(fr[[4]], Zenv)
+            
+            wpos <- 5
+            if(type == "mlsd") {
+                freq <- NA
+            } else {
+                freq <- eval(fr[[4]], Zenv)
+            }
+            
+            
             lags <- eval(fr[[3]], Zenv)
             nol <- switch(type,
                           fmls = lags+1,
                           dmls = lags+1,
-                          mls = length(lags)
+                          mls = length(lags),
+                          mlsd = length(lags)
             )
             lagstruct <- switch(type,
                                 fmls = 0:lags,
                                 dmls = 0:lags,
-                                mls = lags
+                                mls = lags,
+                                mlsd = lags
             )
             start <- rep(0, nol)
             grf <- function(p)diag(nol)
-            if(length(fr) > 4 && fr[[5]] != "*") {
-                mf <- fr[-5]
-                mf[[1]] <- fr[[5]]
-                weight_name <- as.character(fr[[5]])            
-                noarg <- length(formals(eval(fr[[5]], Zenv)))
-                if(noarg<2)stop("The weight function must have at least two arguments")            
+            if (length(fr) > wpos - 1 && fr[[wpos]] != "*") {
+                mf <- fr[-wpos]
+                mf[[1]] <- fr[[wpos]]
+                weight_name <- as.character(fr[[wpos]])
+                
+                ##Since we allow stars and other stuff in mls, maybe allow to 
+                ##specify the multiplicative property in a call to mls?
+                
+                noarg <- length(formals(eval(fr[[wpos]], Zenv)))
+                if(noarg < 2) stop("The weight function must have at least two arguments")            
                 mf <- mf[1:min(length(mf), noarg + 1)]
                 if(length(mf)>3) {
-                    for(j in 4:length(mf)) {
-                        mf[[j]] <- eval(mf[[j]], Zenv)
+                    ##If we are in mlsd we just need to ignore the third parameter, 
+                    ##it cannot be passed to weight function
+                    start_eval <- 4
+                    if(type == "mlsd") start_eval <- 5
+                    if(length(mf) >= start_eval) {
+                        for(j in start_eval:length(mf)) {
+                            mf[[j]] <- eval(mf[[j]], Zenv)
+                        }
                     }
                 }
                 mf[[3]] <- ifelse(is.null(ltb), nol, sum(ltb[, 1]))
@@ -584,17 +621,9 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
     }
     
     start_default[names(start)] <- start
-            
+    
     np <- cumsum(sapply(start_default,length))
 
-    build_indices <- function(ci,nm) {
-        inds <- cbind(c(1,ci[-length(ci)]+1),ci)
-        inds <- apply(inds,1,function(x)list(x[1]:x[2]))
-        inds <- lapply(inds,function(x)x[[1]])
-        names(inds) <- nm
-        inds
-    }
-    
     pinds <- build_indices(np,names(start_default))
 
     for(i in 1:length(start_default))names(start_default[[i]]) <- NULL
@@ -651,7 +680,6 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
             ifelse(is.null(dim(x)),1,ncol(x))
             }))
         xxinds <- build_indices(npxx,names(start_default))
-        
         XX <- do.call("cbind",Xstart)
         ###If the starting values for the weight restriction are all zeros, then the weighted explanatory variable is zero.
         ###In this case lsfit gives a warning about colinear matrix, which we can ignore.
@@ -662,6 +690,18 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
 
         nms <- !(names(start_default) %in% names(start))
         start_default[nms] <- lmstart[nms]
+        
+        for(ww in which(wi)) {
+            normalized <- FALSE
+            if(rfd[[ww]]$weight_name %in% c("nealmon","nbeta","nbetaMT","gompertzp","nakagamip","lcauchyp")) normalized <- TRUE
+            else {
+                normalized <- is_weight_normalized(rf[[ww]], start_default[[ww]])
+            }
+            if(normalized) {
+                start_default[[ww]][1] <- lmstart[[ww]]
+            }
+        }
+       
     }
     
     starto <- unlist(start_default)
@@ -678,7 +718,13 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
         r <- y - mdsrhs(p)
         sum(r^2)
     }
-
+    if(!is.null(tau)) {
+        fn0 <- function(p,...) {
+            r <- y - mdsrhs(p)
+            sum(tau * pmax(r, 0) + (tau - 1) * pmin(r,0))
+        }
+    }
+    
     if(!use_gradient) {
         gradD <- function(p)jacobian(all_coef,p)
         gr <- function(p)grad(fn0,p)
@@ -800,7 +846,13 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
         term$midas_coef_index <- xind
         term
     },term_info,pinds[names(term_info)],xinds[names(term_info)],SIMPLIFY=FALSE)
-
+    
+    if(!is.null(tau))  {
+        ##At the moment do not calculate the gradient and hessian for 
+        ##quantile regression, as it does not make sense
+        gr <- NULL
+        hess <- NULL
+    }
     list(coefficients=starto,
          midas_coefficients=all_coef(starto),
          model=cbind(y,X),         
@@ -820,7 +872,8 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
          gradD=gradD,
          Zenv=Zenv,
          use_gradient=use_gradient,
-         nobs=nrow(X))   
+         nobs=nrow(X),
+         tau = tau)   
 }
 
 ##' Restricted MIDAS regression
@@ -850,13 +903,14 @@ prepmidas_r <- function(y, X, mt, Zenv, cl, args, start, Ofunction, weight_gradi
 ##'
 ##' X<-fmls(x,11,12)
 ##'
-##' midas_r_simple(y,X,trend,weight=nealmon,startx=c(0,0,0))
+##' midas_r_plain(y,X,trend,weight=nealmon,startx=c(0,0,0))
 ##' @export
 ##' 
-midas_r_simple <- function(y,X,z=NULL,weight,grw=NULL,startx,startz=NULL,method=c("Nelder-Mead","BFGS"),...) {
+midas_r_plain <- function(y,X,z=NULL,weight,grw=NULL,startx,startz=NULL,method=c("Nelder-Mead","BFGS"),...) {
     d <- ncol(X)
     nw <- length(startx)
-    if(!is.matrix(z))z <- matrix(z,ncol=1)
+   
+    if(!is.null(z) && !is.matrix(z)) z <- matrix(z,ncol=1)
     model <- na.omit(cbind(y,X,z))
     y <- model[,1]
     XX <- model[,-1]
@@ -948,12 +1002,14 @@ update_weights <- function(expr,tb) {
     }
     if(length(expr)==5) {
         fun <- as.character(expr[[1]])
-        if(fun[[1]] %in% c("fmls","mls","dmls")) {
+        if(fun[[1]] %in% c("fmls","mls","dmls","mlsd")) {
+            end <- 4
+            if(fun[1] == "mlsd") end <- 5
             term_name <- as.character(expr[[2]])
             if(term_name %in% names(tb)) {
                 if(is.null(tb[[term_name]])|| tb[[term_name]] == "") {
-                    expr <- expr[1:4]
-                } else expr[[5]] <- as.name(tb[[term_name]])                    
+                    expr <- expr[1:end]
+                } else expr[[end+1]] <- as.name(tb[[term_name]])                    
             }
         }
         else return(expr)
@@ -1035,4 +1091,16 @@ checkARstar <- function(trms) {
     }
   }
   list(x = trms, lagsTable = lagsTable)
+}
+
+build_indices_list <- function(l) {
+    build_indices(cumsum(sapply(l, length)), names(l))
+}
+
+build_indices <- function(ci,nm) {
+    inds <- cbind(c(1,ci[-length(ci)]+1),ci)
+    inds <- apply(inds,1,function(x)list(x[1]:x[2]))
+    inds <- lapply(inds,function(x)x[[1]])
+    names(inds) <- nm
+    inds
 }

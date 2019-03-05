@@ -2,7 +2,7 @@
 % Please edit documentation in R/lagspec.R
 \name{genexp_gradient}
 \alias{genexp_gradient}
-\title{Gradient of feneralized exponential MIDAS coefficient generating function}
+\title{Gradient of generalized exponential MIDAS coefficient generating function}
 \usage{
 genexp_gradient(p, d, m)
 }
@@ -25,10 +25,9 @@ Almon lag. It is defined as a product of first order polynomial with exponent
 of the second order polynomial. This spefication was used by V. Kvedaras and 
 V. Zemlys (2012).
 }
-\author{
-Virmantas Kvedaras, Vaidotas Zemlys
-}
 \references{
 Kvedaras V., Zemlys, V. \emph{Testing the functional constraints on parameters in regressions with variables of different frequency} Economics Letters 116 (2012) 250-254
 }
-
+\author{
+Virmantas Kvedaras, Vaidotas Zemlys
+}

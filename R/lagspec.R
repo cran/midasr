@@ -102,6 +102,7 @@ nealmon_gradient <- function(p,d,m) {
 }
 
 ##' Normalized beta probability density function MIDAS weights specification
+##' 
 ##' Calculate MIDAS weights according to normalized beta probability density function specification
 ##' @param p parameters for normalized beta probability density function
 ##' @param d number of coefficients
@@ -110,10 +111,11 @@ nealmon_gradient <- function(p,d,m) {
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
 nbeta <- function(p,d,m) {
-    nbetaMT(c(p,0),d,m)
+    nbetaMT(c(p[1:3],0),d,m)
 }
 
 ##' Gradient function for normalized beta probability density function MIDAS weights specification
+##' 
 ##' Calculate gradient function for normalized beta probability density function specification of MIDAS weights.
 ##' @param p parameters for normalized beta probability density function
 ##' @param d number of coefficients
@@ -122,11 +124,12 @@ nbeta <- function(p,d,m) {
 ##' @author Virmantas Kvedaras, Vaidotas Zemlys
 ##' @export
 nbeta_gradient <- function(p,d,m) {
-    nbetaMT_gradient(c(p,0),d,m)[,1:3]
+    nbetaMT_gradient(c(p[1:3],0),d,m)[,1:3]
 }
 
 
 ##' Normalized beta probability density function MIDAS weights specification (MATLAB toolbox compatible)
+##' 
 ##' Calculate MIDAS weights according to normalized beta probability density function specification. Compatible with the specification in MATLAB toolbox.
 ##' @param p parameters for normalized beta probability density function
 ##' @param d number of coefficients
@@ -150,6 +153,7 @@ nbetaMT <- function(p,d,m) {
 }
 
 ##' Gradient function for normalized beta probability density function MIDAS weights specification (MATLAB toolbox compatible)
+##' 
 ##' Calculate gradient function for normalized beta probability density function specification of MIDAS weights.
 ##' @param p parameters for normalized beta probability density function
 ##' @param d number of coefficients
@@ -249,6 +253,7 @@ polystep_gradient <- function(p,d,m,a) {
 }
     
 ##' Normalized Gompertz probability density function MIDAS weights specification
+##' 
 ##' Calculate MIDAS weights according to normalized Gompertz probability density function specification
 ##' @param p parameters for normalized Gompertz probability density function
 ##' @param d number of coefficients
@@ -263,6 +268,7 @@ gompertzp <- function(p, d, m) {
 }
 
 ##' Gradient function for normalized Gompertz probability density function MIDAS weights specification
+##'
 ##' Calculate gradient function for normalized Gompertz probability density function specification of MIDAS weights.
 ##' @param p parameters for normalized Gompertz probability density function
 ##' @param d number of coefficients
@@ -280,6 +286,7 @@ gompertzp_gradient <- function(p, d, m) {
 }
 
 ##' Normalized Nakagami probability density function MIDAS weights specification
+##' 
 ##' Calculate MIDAS weights according to normalized Nakagami probability density function specification
 ##' @param p parameters for normalized Nakagami probability density function
 ##' @param d number of coefficients
@@ -294,6 +301,7 @@ nakagamip <- function(p, d, m) {
 }
 
 ##' Gradient function for normalized Nakagami probability density function MIDAS weights specification
+##' 
 ##' Calculate gradient function for normalized Nakagami probability density function specification of MIDAS weights.
 ##' @param p parameters for normalized Nakagami probability density function
 ##' @param d number of coefficients
@@ -311,6 +319,7 @@ nakagamip_gradient <- function(p, d, m) {
 }
 
 ##' Normalized log-Cauchy probability density function MIDAS weights specification
+##' 
 ##' Calculate MIDAS weights according to normalized log-Cauchy probability density function specification
 ##' @param p parameters for normalized log-Cauchy probability density function
 ##' @param d number of coefficients
@@ -325,6 +334,7 @@ lcauchyp <- function(p, d, m) {
 }
 
 ##' Gradient function for normalized log-Cauchy probability density function MIDAS weights specification
+##' 
 ##' Calculate gradient function for normalized log-Cauchy probability density function specification of MIDAS weights.
 ##' @param p parameters for normalized log-Cauchy probability density function
 ##' @param d number of coefficients
@@ -410,7 +420,7 @@ genexp <- function(p, d, m) {
 #' of the second order polynomial. This spefication was used by V. Kvedaras and 
 #' V. Zemlys (2012).
 #' 
-#' @title Gradient of feneralized exponential MIDAS coefficient generating function
+#' @title Gradient of generalized exponential MIDAS coefficient generating function
 #' @param p a vector of parameters
 #' @param d number of coefficients
 #' @param m the frequency, currently ignored
@@ -425,4 +435,29 @@ genexp_gradient <- function(p, d, m) {
     pol0 <- p[1] + p[2]*i
     epl <- exp(pol)
     cbind(epl, epl*i, pol0*epl*i, pol0*epl*i^2)
+}
+
+is_weight_normalized <- function(wf, init, chk = rnorm(5), tol = 1e-8, nc = 1) {
+    
+    tst <- lapply(c(0,rnorm(chk)), function(x) {
+        ss <- init
+        ss[nc] <- ss[nc] + x
+        try(abs(sum(wf(ss)) - ss[nc]))
+    })
+    
+    fail <- sapply(tst, inherits, "try-error")
+    got_na <- fail
+    got_na[!fail] <- sapply(tst[!fail], is.na)
+    
+    if (all(fail) | all(got_na)) stop("Error in checking normalization, all candidate starting values produced errors")
+    
+    eq <- unlist(tst[!got_na])
+    if (all(eq < tol)) return(TRUE)
+    else return(FALSE)
+}
+
+find_normalisation_coefficient <- function(wf, init) {
+    tst <- lapply(1:length(init), function(i) try(is_weight_normalized(wf, init, nc = i)))
+    tst <- sapply(tst, function(l) if (inherits(l, "try-error")) return(FALSE) else return(l))
+    which(tst)
 }

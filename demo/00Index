@@ -3,3 +3,6 @@ RV				Forecasting realized volatility of SP&500 index with MIDAS regression
 logRV			Forecasting logarithm of realized volatility of SP&500 index with MIDAS regression
 autoreg			Simulation example of autoregressive MIDAS model
 imidasr			Simulation example of estimation with I(1) regressors present
+nlpr            Simulation example of LSTR and MMM MIDAS models
+single_index    Simulation example of SI MIDAS model
+pl              Simulation example of PL MIDAS model

@@ -244,3 +244,255 @@ simulate.midas_r <- function(object, nsim = 999, seed = NULL, future=TRUE, newda
 ##' @rdname simulate.midas_r
 ##' @export
 NULL
+
+#' Simulate LSTR MIDAS regression model
+#'
+#' @param n number of observations to simulate.
+#' @param m integer, frequency ratio
+#' @param theta vector, restriction coefficients for high frequency variable
+#' @param intercept vector of length 1, intercept for the model.
+#' @param plstr vector of length 4, slope for the LSTR term and LSTR parameters 
+#' @param ar.x vector, AR parameters for simulating high frequency variable
+#' @param ar.y vector, AR parameters for AR part of the model
+#' @param rand.gen function, a function for generating the regression innovations, default is \code{rnorm}
+#' @param n.start integer, length of a 'burn-in' period. If NA, the default, a reasonable value is computed.
+#' @param ... additional parameters to rand.gen
+#'
+#' @return a list
+#' @export
+#'
+#' @examples
+#' 
+#' nnbeta <- function(p, k) nbeta(c(1,p),k)
+#' 
+#' dgp <- midas_lstr_sim(250, m = 12, theta = nnbeta(c(2, 4), 24), 
+#'                            intercept = c(1), plstr = c(1.5, 1, log(1), 1), 
+#'                            ar.x = 0.9, ar.y = 0.5, n.start = 100)
+
+#' z <- cbind(1, mls(dgp$y, 1:2, 1))
+#' colnames(z) <- c("Intercept", "y1", "y2")
+#' X <- mls(dgp$x, 0:23, 12)
+#'
+#' lstr_mod <- midas_lstr_plain(dgp$y, X, z, nnbeta, 
+#'                           start_lstr = c(1.5, 1, 1, 1), 
+#'                           start_x = c(2, 4), start_z=c(1, 0.5, 0)) 
+#' 
+#' coef(lstr_mod)
+#' 
+#' @importFrom stats filter sd
+midas_lstr_sim <- function(n, m, theta, intercept, plstr, ar.x,  ar.y, 
+                           rand.gen = rnorm,  n.start = NA, ...) {
+    
+    minroots <- min(Mod(polyroot(c(1, -ar.y))))
+    
+    if (minroots <= 1) stop("'ar' part of model is not stationary")
+    if(is.na(n.start)) n.start <- length(ar.y) + ceiling(6/log(minroots))
+    
+    innov_x <- rand.gen(m*(n + n.start))
+    
+    x <- filter(innov_x, ar.x, method = 'recursive', init = rep(0, length(ar.x)))
+    
+    xx <- mls(x, 0:(length(theta) - 1), m)
+    
+    sd_x <- sd(c(xx), na.rm = TRUE)
+     
+    g <- intercept + lstr(xx, theta, plstr, sd_x)
+    
+    g[is.na(g)] <- 0
+    
+    innov <- rand.gen(length(g), ...)
+    
+    y <- filter(g + innov, ar.y, method = "recursive", init = rep(0, length(ar.y)))
+    
+    
+    y <- ts(y[-seq_len(n.start)], frequency = 1)
+    x <- ts(x[-seq_len(n.start*m)], frequency = m)
+    g <- ts(g[-seq_len(n.start)], frequency = 1)
+    innov <- ts(innov[-seq_len(n.start)], frequency = 1)
+    
+    list(y = y, x = x, lstr = plstr, intercept = intercept, ar.y = ar.y, g = g, innov = innov)
+}
+
+
+#' Simulate MMM MIDAS regression model
+#'
+#' @param n number of observations to simulate.
+#' @param m integer, frequency ratio
+#' @param theta vector, restriction coefficients for high frequency variable
+#' @param intercept vector of length 1, intercept for the model.
+#' @param pmmm vector of length 2, slope for the MMM term and MMM parameter
+#' @param ar.x vector, AR parameters for simulating high frequency variable
+#' @param ar.y vector, AR parameters for AR part of the model
+#' @param rand.gen function, a function for generating the regression innovations, default is \code{rnorm}
+#' @param n.start integer, length of a 'burn-in' period. If NA, the default, a reasonable value is computed.
+#' @param ... additional parameters to rand.gen
+#'
+#' @return a list
+#' @export
+#'
+#' @examples
+#' 
+#' nnbeta <- function(p, k) nbeta(c(1,p),k)
+#' 
+#' dgp <- midas_mmm_sim(250, m = 12, theta = nnbeta(c(2, 4), 24), 
+#'                            intercept = c(1), pmmm = c(1.5, 1), 
+#'                            ar.x = 0.9, ar.y = 0.5, n.start = 100)
+
+#' z <- cbind(1, mls(dgp$y, 1:2, 1))
+#' colnames(z) <- c("Intercept", "y1", "y2")
+#' X <- mls(dgp$x, 0:23, 12)
+#'
+#' mmm_mod <- midas_mmm_plain(dgp$y, X, z, nnbeta, 
+#'                           start_mmm = c(1.5, 1), 
+#'                           start_x = c(2, 4), start_z=c(1, 0.5, 0)) 
+#' 
+#' coef(mmm_mod)
+#' 
+#' @importFrom stats filter sd
+midas_mmm_sim <- function(n, m, theta, intercept, pmmm, ar.x,  ar.y, 
+                           rand.gen = rnorm,  n.start = NA, ...) {
+    
+    minroots <- min(Mod(polyroot(c(1, -ar.y))))
+    
+    if (minroots <= 1) stop("'ar' part of model is not stationary")
+    if(is.na(n.start)) n.start <- length(ar.y) + ceiling(6/log(minroots))
+    
+    innov_x <- rand.gen(m*(n + n.start))
+    
+    x <- filter(innov_x, ar.x, method = 'recursive', init = rep(0, length(ar.x)))
+    
+    xx <- mls(x, 0:(length(theta) - 1), m)
+    
+    g <- intercept + mmm(xx, theta, pmmm)
+    
+    g[is.na(g)] <- 0
+    
+    innov <- rand.gen(length(g), ...)
+    
+    y <- filter(g + innov, ar.y, method = "recursive", init = rep(0, length(ar.y)))
+    
+    
+    y <- ts(y[-seq_len(n.start)], frequency = 1)
+    x <- ts(x[-seq_len(n.start*m)], frequency = m)
+    g <- ts(g[-seq_len(n.start)], frequency = 1)
+    innov <- ts(innov[-seq_len(n.start)], frequency = 1)
+
+    
+    list(y = y, x = x, mmm = pmmm, intercept = intercept, ar.y = ar.y, g = g, innov = innov)
+}
+
+#' Simulate SI MIDAS regression model
+#'
+#' @param n number of observations to simulate.
+#' @param m integer, frequency ratio
+#' @param theta vector, restriction coefficients for high frequency variable
+#' @param gfun  function, a function which takes a single index 
+#' @param ar.x vector, AR parameters for simulating high frequency variable
+#' @param ar.y vector, AR parameters for AR part of the model
+#' @param rand.gen function, a function for generating the regression innovations, default is \code{rnorm}
+#' @param n.start integer, length of a 'burn-in' period. If NA, the default, a reasonable value is computed.
+#' @param ... additional parameters to rand.gen
+#'
+#' @return a list
+#' @export
+#'
+#' @examples
+#' 
+#' nnbeta <- function(p, k) nbeta(c(1,p),k)
+#' 
+#' dgp <- midas_si_sim(250, m = 12, theta = nnbeta(c(2, 4), 24), 
+#'                            gfun = function(x) 0.03*x^3, 
+#'                            ar.x = 0.9, ar.y = 0.5, n.start = 100)
+#'                            
+#' @importFrom stats filter sd
+midas_si_sim <- function(n, m, theta, gfun, ar.x,  ar.y, 
+                          rand.gen = rnorm,  n.start = NA, ...) {
+    
+    minroots <- min(Mod(polyroot(c(1, -ar.y))))
+    
+    if (minroots <= 1) stop("'ar' part of model is not stationary")
+    if (is.na(n.start)) n.start <- length(ar.y) + ceiling(6/log(minroots))
+    
+    innov_x <- rand.gen(m*(n + n.start))
+    
+    x <- filter(innov_x, ar.x, method = 'recursive', init = rep(0, length(ar.x)))
+    
+    xx <- mls(x, 0:(length(theta) - 1), m)
+    xi <- xx %*% theta
+    g <- gfun(xi) 
+    
+    g[is.na(g)] <- 0
+    
+    innov <- rand.gen(length(g), ...)
+    
+    y <- filter(g + innov, ar.y, method = "recursive", init = rep(0, length(ar.y)))
+    
+    
+    y <- ts(y[-seq_len(n.start)], frequency = 1)
+    x <- ts(x[-seq_len(n.start*m)], frequency = m)
+    g <- ts(g[-seq_len(n.start)], frequency = 1)
+    xi <- ts(xi[-seq_len(n.start)], frequency = 1)
+    innov <- ts(innov[-seq_len(n.start)], frequency = 1)
+    
+    list(y = y, x = x, ar.y = ar.y, g = g, innov = innov)
+}
+
+#' Simulate PL MIDAS regression model
+#'
+#' @param n number of observations to simulate.
+#' @param m integer, frequency ratio
+#' @param theta vector, restriction coefficients for high frequency variable
+#' @param gfun  function, a function which takes a single index 
+#' @param ar.x vector, AR parameters for simulating high frequency variable
+#' @param ar.y vector, AR parameters for AR part of the model
+#' @param rand.gen function, a function for generating the regression innovations, default is \code{rnorm}
+#' @param n.start integer, length of a 'burn-in' period. If NA, the default, a reasonable value is computed.
+#' @param ... additional parameters to rand.gen
+#'
+#' @return a list
+#' @export
+#'
+#' @examples
+#' 
+#' nnbeta <- function(p, k) nbeta(c(1,p),k)
+#' 
+#' dgp <- midas_pl_sim(250, m = 12, theta = nnbeta(c(2, 4), 24), 
+#'                            gfun = function(x) 0.25*x^3, 
+#'                            ar.x = 0.9, ar.y = 0.5, n.start = 100)
+#'                            
+#' @importFrom stats filter sd
+midas_pl_sim <- function(n, m, theta, gfun, ar.x,  ar.y, 
+                         rand.gen = rnorm,  n.start = NA, ...) {
+    
+    minroots <- min(Mod(polyroot(c(1, -ar.y))))
+    
+    if (minroots <= 1) stop("'ar' part of model is not stationary")
+    if (is.na(n.start)) n.start <- length(ar.y) + ceiling(6/log(minroots))
+    
+    innov_x <- rand.gen(m*(n + n.start))
+    
+    x <- filter(innov_x, ar.x, method = 'recursive', init = rep(0, length(ar.x)))
+    
+    xx <- mls(x, 0:(length(theta) - 1), m)
+    
+    z <- rand.gen(n + n.start, ...)
+    xi <- xx %*% theta
+    g <- xi + gfun(z)
+    
+    g[is.na(g)] <- 0
+    
+    innov <- rand.gen(length(g), ...)
+    
+    y <- filter(g + innov, ar.y, method = "recursive", init = rep(0, length(ar.y)))
+    
+    
+    y <- ts(y[-seq_len(n.start)], frequency = 1)
+    x <- ts(x[-seq_len(n.start*m)], frequency = m)
+    z <- ts(z[-seq_len(n.start)], frequency = 1)
+    g <- ts(g[-seq_len(n.start)], frequency = 1)
+    xi <- ts(xi[-seq_len(n.start)], frequency = 1)
+    innov <- ts(innov[-seq_len(n.start)], frequency = 1)
+
+    list(y = y, x = x, ar.y = ar.y, z = z, xi = xi, g = g, innov = innov)
+}
+

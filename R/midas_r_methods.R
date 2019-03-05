@@ -140,7 +140,7 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
     ans <- list(formula=formula(object$terms), residuals=r, sigma=sqrt(resvar),
                 df=c(p,rdf), cov.unscaled=XDtXDinv, call=object$call,
                 coefficients=param,midas_coefficients=coef(object, midas = TRUE),
-                r_squared = r_squared, adj_r_squared = adj_r_squared)
+                r_squared = r_squared, adj_r_squared = adj_r_squared, lhs_start = object$lhs_start, lhs_end = object$lhs_end, class_lhs = class(object$lhs))
     class(ans) <- "summary.midas_r"
     ans
 }
@@ -148,6 +148,11 @@ summary.midas_r <- function(object, vcov.=vcovHAC, df=NULL, prewhite=TRUE, ...) 
 ##' @export
 ##' @method print summary.midas_r
 print.summary.midas_r <- function(x, digits=max(3, getOption("digits") - 3 ), signif.stars = getOption("show.signif.stars"), ...) {
+    cat(paste("\nMIDAS regression model with \"", x$class_lhs[1], 
+              "\" data:\n", sep = ""))
+    cat(paste("Start = ", x$lhs_start, 
+              ", End = ", x$lhs_end, 
+              "\n", sep = ""))
     cat("\n Formula", deparse(formula(x)),"\n")
     df <- x$df
     rdf <- df[2L]
@@ -162,8 +167,16 @@ print.summary.midas_r <- function(x, digits=max(3, getOption("digits") - 3 ), si
 ##' @export
 ##' @method print midas_r
 print.midas_r <- function(x, digits=max(3,getOption("digits")-3),...) {
-    cat("MIDAS regression model\n")
+    #Code adapted from dynln:::print.dynlm code
+    model_string <-  "\nMIDAS regression model with \""
+    if(inherits(x, "midas_qr")) model_string <- "\nMIDAS quantile regression model with \""
+    cat(paste(model_string, class(x$lhs)[1], 
+              "\" data:\n", sep = ""))
+    cat(paste("Start = ", x$lhs_start, 
+              ", End = ", x$lhs_end, 
+              "\n", sep = ""))
     cat(" model:", deparse(formula(x)),"\n")
+    if(inherits(x,"midas_qr")) cat("   tau:", x$tau, "\n")
     print(coef(x),digits = digits, ...)
     cat("\n")
     cat("Function", x$argmap_opt$Ofunction, "was used for fitting\n")
@@ -526,18 +539,36 @@ data_to_list <- function(data) {
                     x
                 } else {
                     ##This is needed since if tseries library is not loaded as.list for mts does not work as expected                   
-                    if(inherits(x,"mts")) 
-                        x <- data.frame(x)
-                    if(ncol(x)==1) {
-                        if(!is.null(colnames(x))) {
-                            if(nm=="") nm <- colnames(x)
-                            else warning("Duplicate names in data. Using the one from the list")                                                                              }                        
-                        x <- list(as.numeric(x[,1]))
-                        names(x) <- nm
-                        x
-                    }                      
-                    else {
-                        as.list(data.frame(x))
+                    if(inherits(x, "xts")) {
+                        if(ncol(x) == 1) {
+                            x <- list(x)
+                            colnames(x[[1]]) <- NULL
+                            names(x) <- nm
+                            return(x)
+                        } else {
+                            res <- vector("list", ncol(x))
+                            for(i in 1:ncol(x)) {
+                                res[[i]] <- x[, i]
+                                colnames(res[[i]]) <- NULL
+                            }
+                            if("" %in% colnames(x)) stop("Please provide the names for your xts objects")
+                            names(res) <- colnames(x)
+                            return(res)
+                        }
+                    } else {
+                        if(inherits(x,"mts")) 
+                            x <- data.frame(x)
+                        if(ncol(x)==1) {
+                            if(!is.null(colnames(x))) {
+                                if(nm=="") nm <- colnames(x)
+                                else warning("Duplicate names in data. Using the one from the list")                                                                              }                        
+                            x <- list(as.numeric(x[,1]))
+                            names(x) <- nm
+                            x
+                        }
+                        else {
+                            as.list(data.frame(x))
+                        }
                     }
                 }
             },data,names(data),SIMPLIFY=FALSE)
@@ -575,6 +606,11 @@ get_estimation_sample <- function(object) {
 ##' @export
 NULL
 
+
+##' @export
+##' @rdname plot_midas_coef.midas_r
+plot_midas_coef <- function(x, term_name, title, ...) UseMethod("plot_midas_coef") 
+
 ##' Plots MIDAS coefficients of a MIDAS regression for a selected term.
 ##'
 ##' Plots MIDAS coefficients of a selected MIDAS regression term together with corresponding MIDAS coefficients and their confidence intervals
@@ -602,8 +638,9 @@ NULL
 ##' 
 ##' plot_midas_coef(mr)
 ##' @importFrom graphics plot points
+##' @method plot_midas_coef midas_r
 ##' @export
-plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, unrestricted = x$unrestricted, ...) {
+plot_midas_coef.midas_r <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, unrestricted = x$unrestricted, ...) {
     if(is.null(term_name)) {
         wt <- do.call("rbind",lapply(x$term_info,function(l)c(l$term_name,l$weight_name)))
         wt <- data.frame(wt)
@@ -643,4 +680,55 @@ plot_midas_coef <- function(x, term_name=NULL, title = NULL, vcov. = sandwich, u
     invisible(pd)
 }
 
+##' Extract coefficients and GOF measures from MIDAS regression object
+##'
+##' 
+##' @param model a MIDAS regression object
+##' @param include.rsquared, If available: should R-squared be reported?
+##' @param include.nobs If available: should the number of observations be reported?
+##' @param include.rmse If available: should the root-mean-square error (= residual standard deviation) be reported?
+##' @param ... additional parameters passed to summary
+##' @return texreg object
+##' @author Virmantas Kvedaras, Vaidotas Zemlys
+##' @importFrom texreg createTexreg
+##' @importFrom stats nobs
+##' @export
+extract.midas_r <- function(model, include.rsquared = TRUE, 
+                            include.nobs = TRUE, include.rmse = TRUE, ...) {
+    s <- summary(model, ...)
+    names <- rownames(s$coef)
+    co <- s$coef[, 1]
+    se <- s$coef[, 2]
+    pval <- s$coef[, 4]
+    rs <- s$r_squared
+    adj <- s$adj_r_squared
+    n <- nobs(model)
+    gof <- numeric()
+    gof.names <- character()
+    gof.decimal <- logical()
+    if (include.rsquared == TRUE) {
+        gof <- c(gof, rs)
+        gof.names <- c(gof.names, "R$^2$")
+        gof.decimal <- c(gof.decimal, TRUE)
+    }
+  
+    if (include.nobs == TRUE) {
+        gof <- c(gof, n)
+        gof.names <- c(gof.names, "Num. obs.")
+        gof.decimal <- c(gof.decimal, FALSE)
+    }
+    if (include.rmse == TRUE && !is.null(s$sigma[[1]])) {
+        rmse <- s$sigma[[1]]
+        gof <- c(gof, rmse)
+        gof.names <- c(gof.names, "$\\sigma^2$")
+        gof.decimal <- c(gof.decimal, TRUE)
+    }
+    tr <- createTexreg(coef.names = names, coef = co, se = se, 
+                       pvalues = pval, gof.names = gof.names, gof = gof, gof.decimal = gof.decimal)
+    return(tr)
+}
+
+##' @importFrom texreg extract
+##' @importFrom methods setMethod
+setMethod("extract", signature = className("midas_r","midasr"), definition = extract.midas_r)
 

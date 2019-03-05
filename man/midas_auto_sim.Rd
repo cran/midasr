@@ -4,8 +4,8 @@
 \alias{midas_auto_sim}
 \title{Simulate simple autoregressive MIDAS model}
 \usage{
-midas_auto_sim(n, alpha, x, theta, rand_gen = rnorm, innov = rand_gen(n,
-  ...), n_start = NA, ...)
+midas_auto_sim(n, alpha, x, theta, rand_gen = rnorm,
+  innov = rand_gen(n, ...), n_start = NA, ...)
 }
 \arguments{
 \item{n}{sample size.}
@@ -50,4 +50,3 @@ midas_r(y ~ mls(y, 1, 1) + fmls(x, 4*12-1, 12, theta_h0), start = list(x = c(-0.
 \author{
 Virmantas Kvedaras, Vaidotas Zemlys
 }
-

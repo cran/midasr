@@ -1,12 +1,18 @@
 context("Testing midas_r")
 set.seed(1001)
-n<-250
-trend<-c(1:n)
-x<-rnorm(4*n)
-z<-rnorm(12*n)
-fn_x <- nealmon(p=c(1,-0.5),d=8)
-fn_z <- nealmon(p=c(2,0.5,-0.1),d=17)
-y<-2+0.1*trend+mls(x,0:7,4)%*%fn_x+mls(z,0:16,12)%*%fn_z+rnorm(n)
+
+n <- 250
+trend <- c(1:n)
+x <- rnorm(4*n)
+z <- rnorm(12*n)
+fn_x <- nealmon(p = c(1,-0.5),d = 8)
+fn_z <- nealmon(p = c(2,0.5,-0.1),d = 17)
+y <- 2 + 0.1*trend + mls(x, 0:7, 4) %*% fn_x + mls(z, 0:16, 12) %*% fn_z + rnorm(n)
+
+data_ts <- list(y = ts(as.numeric(y), frequency = 1),
+                x = ts(x, frequency = 4),
+                z = ts(z, frequency = 12),
+                trend = trend)
 
 
 test_that("midas_r with start=NULL is the same as lm",{
@@ -19,6 +25,18 @@ test_that("midas_r with start=NULL is the same as lm",{
     expect_that(sum(abs(coef(eq_u1) - coef(eq_u2))), equals(0))
     expect_that(sum(abs(coef(eq_u3) - coef(eq_u2))), equals(0))
 })
+
+test_that("midas_r with mlsd is the same as mls for start=NULL",{
+    eq_u1 <- midas_u(y~trend+mls(x,0:7,4)+mls(z,0:16,12), data= data_ts)
+    
+    eq_u2 <- midas_r(y~trend+mlsd(x, 0:7, y) + mlsd(z, 0:16, y), start = NULL, data = data_ts)
+    
+    eq_u3 <- midas_u(y~trend+mlsd(x, 0:7, y) + mlsd(z,0:16, y), data = data_ts)
+    
+    expect_that(sum(abs(coef(eq_u1) - coef(eq_u2))), equals(0))
+    expect_that(sum(abs(coef(eq_u3) - coef(eq_u2))), equals(0))
+})
+
 
 test_that("midas_r without weights gives the same summary as midas_u",{
     a <-summary(lm(y~trend+mls(x,k=0:7,m=4)+mls(z,k=0:16,m=12)))
@@ -33,7 +51,6 @@ test_that("midas_r without start throws an error",{
     expect_that(midas_r(y~trend+mls(x,0:7,4)+mls(z,0:16,12)), throws_error())
     
 })
-
 
 test_that("midas_u picks up data from main R environment",{
     eq_u1<-midas_u(y~trend+mls(x,0:7,4)+mls(z,0:16,12))
@@ -55,12 +72,37 @@ test_that("midas_r picks up data from main R environment",{
     
 })
 
+test_that("midas_r and midas_u picks data from the parent environment with mlsd", {
+    eq_u1 <- midas_u(y~trend+mls(x,0:7,4)+mls(z,0:16,12), data= data_ts)
+    xx <- data_ts$x
+    yy <- data_ts$y
+    zz <- data_ts$z
+    
+    eq_u2 <- midas_r(yy~trend+mlsd(xx, 0:7, yy) + mlsd(zz, 0:16, yy), start = NULL)
+    
+    eq_u3 <- midas_u(yy~trend+mlsd(xx, 0:7, yy) + mlsd(zz,0:16, yy))
+    
+    expect_that(sum(abs(coef(eq_u1) - coef(eq_u2))), equals(0))
+    expect_that(sum(abs(coef(eq_u3) - coef(eq_u2))), equals(0))
+})
+
 
 test_that("NLS problem solution is close to the DGP", {
     a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)))
     expect_that(sum(abs(coef(a) - c(2,0.1,c(1,-0.5),c(2,0.5,-0.1)))), is_less_than(1))
     expect_that(sum(abs(coef(a,midas=TRUE)-c(2,0.1,fn_x,fn_z))), is_less_than(1))
 })
+
+test_that("midas_r gives the same result for mlsd", {
+    a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)))
+    
+    b <- midas_r(y~trend+mlsd(x,0:7,y,nealmon)+mlsd(z,0:16,y,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)), data = data_ts)
+  
+    expect_that(sum(abs(coef(a) - coef(b))), is_less_than(1e-06))
+    expect_that(sum(abs(coef(a,midas=TRUE)-coef(b, midas = TRUE))), is_less_than(1))
+})
+
+
 
 test_that("Deriv tests give positive results", {
     a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)))
@@ -87,6 +129,27 @@ test_that("Updating Ofunction works", {
     expect_that(c$convergence == 0, is_true())
     
 })
+
+test_that("Updating Ofunction works for mlsd", {
+    a <- midas_r(y~trend+mlsd(x,0:7,y,nealmon)+mlsd(z,0:16,y,nealmon),
+                 start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)), data = data_ts)
+    
+    b <- update(a, Ofunction = "nls")
+    c <- update(b, Ofunction = "optimx", method = c("Nelder-Mead", "BFGS", "spg"))
+    
+    expect_that(a$argmap_opt$Ofunction == "optim", is_true())
+    expect_that(b$argmap_opt$Ofunction == "nls", is_true())
+    expect_that(c$argmap_opt$Ofunction == "optimx", is_true())
+    
+    expect_that(inherits(b$opt, "nls"), is_true())
+    expect_that(inherits(c$opt, "optimx"), is_true())
+    
+    expect_that(a$convergence == 0, is_true())
+    expect_that(b$convergence == 0, is_true())
+    expect_that(c$convergence == 0, is_true())
+    
+})
+
 
 test_that("Updating Ofunction arguments  works", {
     a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)))
@@ -156,6 +219,28 @@ test_that("Gradient passing works for default gradients", {
     
 })
 
+test_that("Gradient passing works with mlsd", {
+    eq_r2 <- midas_r(y ~ trend + mlsd(x, 0:7, y, nealmon) + 
+                         mlsd(z, 0:16, y, nealmon),
+                     start = list(x = c(1, -0.5), z = c(2, 0.5, -0.1)),
+                     data = data_ts,
+                     weight_gradients = list(nealmon = nealmon_gradient))
+    
+    dt <- deriv_tests(eq_r2)
+    expect_that(sum(abs(dt$gradient))/nrow(eq_r2$model), is_less_than(1e-3))
+})
+
+test_that("Gradient passing works for default gradients with mlsd", {
+    eq_r2 <- midas_r(y ~ trend + mlsd(x, 0:7, y, nealmon) + 
+                         mlsd(z, 0:16, y, nealmon),
+                     start = list(x = c(1, -0.5), z = c(2, 0.5, -0.1)),
+                     data = data_ts,
+                     weight_gradients=list())
+    
+    expect_that(sum(abs(eq_r2$term_info$x$gradient(c(1,0.1,0.1)) - nealmon_gradient(c(1,0.1,0.1),8))), equals(0))
+    
+})
+
 
 test_that("Gradient passing works for nls", {
     eq_r2 <- midas_r(y ~ trend + mls(x, 0:7, 4, nealmon) + 
@@ -213,19 +298,19 @@ test_that("AR* model works with gradient", {
 })
 
 
-test_that("Midas_r_simple works", {
+test_that("Midas_r_plain works", {
     a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)), Ofunction = "optimx")
     fn_a <- function(p, d) {
             c(nealmon(p[1:2],d=8),nealmon(p[3:5], d=17))
             }
-    s <- midas_r_simple(y,cbind(mls(x, 0:7, 4), mls(z, 0:16, 12)), cbind(1, trend), fn_a, 
-                            startx = c(1, -0.5, 2, 0.5, -0.1), startz = a$start_opt[1:2])
+    s <- midas_r_plain(y,cbind(mls(x, 0:7, 4), mls(z, 0:16, 12)), cbind(1, trend), fn_a, 
+                            startx = a$start_opt[3:7], startz = a$start_opt[1:2])
     
     expect_that(sum(abs(coef(s)[c(6:7,1:5)]-coef(a)))
 , is_less_than(1e-11))
 })
 
-test_that("Midas_r_simple gradient works", {
+test_that("Midas_r_plain gradient works", {
     a <- midas_r(y~trend+mls(x,0:7,4,nealmon)+mls(z,0:16,12,nealmon),start=list(x=c(1,-0.5),z=c(2,0.5,-0.1)), Ofunction = "optimx", weight_gradients = list())
     fn_a <- function(p, d) {
         c(nealmon(p[1:2],d=8),nealmon(p[3:5], d=17))
@@ -237,8 +322,8 @@ test_that("Midas_r_simple gradient works", {
             rbind(matrix(0, nrow = 8, ncol = 3), gr2))
     }
     
-    s <- midas_r_simple(y,cbind(mls(x, 0:7, 4), mls(z, 0:16, 12)), cbind(1, trend), fn_a, 
-                        startx = c(1, -0.5, 2, 0.5, -0.1), startz = a$start_opt[1:2], 
+    s <- midas_r_plain(y,cbind(mls(x, 0:7, 4), mls(z, 0:16, 12)), cbind(1, trend), fn_a, 
+                        startx = a$start_opt[3:7], startz = a$start_opt[1:2], 
                         grw = gr_fn_a)
     
     expect_that(sum(abs(coef(s)[c(6:7,1:5)]-coef(a)))

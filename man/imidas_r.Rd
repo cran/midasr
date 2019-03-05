@@ -4,8 +4,8 @@
 \alias{imidas_r}
 \title{Restricted MIDAS regression with I(1) regressors}
 \usage{
-imidas_r(formula, data, start, Ofunction = "optim", weight_gradients = NULL,
-  ...)
+imidas_r(formula, data, start, Ofunction = "optim",
+  weight_gradients = NULL, ...)
 }
 \arguments{
 \item{formula}{formula for restricted MIDAS regression. Formula must include \code{\link{fmls}} function}
@@ -91,10 +91,9 @@ x <- window(xx, start=start(y))
 imr <- imidas_r(y~fmls(x,4*12-1,12,theta.h0)-1,start=list(x=c(-0.1,10,-10,-10)))
 
 }
-\author{
-Virmantas Kvedaras, Vaidotas Zemlys
-}
 \seealso{
 midas_r.midas_r
 }
-
+\author{
+Virmantas Kvedaras, Vaidotas Zemlys
+}
