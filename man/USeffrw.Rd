@@ -4,9 +4,11 @@
 \name{USeffrw}
 \alias{USeffrw}
 \title{US weekly effective federal funds rate.}
-\format{A \code{\link{data.frame}} object.}
+\format{
+A \code{\link{data.frame}} object.
+}
 \source{
-\href{http://www.bea.gov/national/xls/gdplev.xls}{FRED}
+\href{https://fred.stlouisfed.org/series/DFF}{FRED}
 }
 \description{
 US weekly effective federal funds rate from 1954-07-07 to 2017-12-13

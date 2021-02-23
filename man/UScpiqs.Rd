@@ -4,11 +4,13 @@
 \name{UScpiqs}
 \alias{UScpiqs}
 \title{US quartely seasonaly adjusted consumer price index}
-\format{A \code{\link{data.frame}} object.}
+\format{
+A \code{\link{data.frame}} object.
+}
 \source{
-\href{http://www.bea.gov/national/xls/gdplev.xls}{FRED}
+\href{https://fred.stlouisfed.org/series/CPALTT01USQ661S}{FRED}
 }
 \description{
-US quarterly CPI from 1960Q1 to 2017Q3s
+US quarterly CPI from 1960Q1 to 2017Q3s. Seasonaly adjusted, Index 2015=1
 }
 \keyword{datasets}
