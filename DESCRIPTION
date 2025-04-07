@@ -3,24 +3,38 @@ Title: Mixed Data Sampling Regression
 Description: Methods and tools for mixed frequency time series data analysis.
     Allows estimation, model selection and forecasting for MIDAS regressions.
 URL: http://mpiktas.github.io/midasr/
-Version: 0.8
-Maintainer: Vaidotas Zemlys-Balevičius <zemlys@gmail.com>
-Author: Virmantas Kvedaras <virmantas.kvedaras@ec.europa.eu>, Vaidotas Zemlys-Balevicius
-   <zemlys@gmail.com>
+Version: 0.9
 Depends: R (>= 2.11.0), sandwich, optimx, quantreg
 Imports: MASS, numDeriv, Matrix, forecast, zoo, stats, graphics, utils,
         Formula, texreg, methods
 License: GPL-2 | MIT + file LICENCE
 BugReports: https://github.com/mpiktas/midasr/issues
 Suggests: testthat, lubridate, xts
-RoxygenNote: 7.1.1
+RoxygenNote: 7.3.2
 Encoding: UTF-8
 Collate: 'deriv.R' 'imidasreg.R' 'lagspec.R' 'midas_nlpr.R'
         'midas_r_methods.R' 'midas_nlpr_methods.R' 'midas_qr_methods.R'
         'midas_sp.R' 'midas_sp_methods.R' 'midaslag.R' 'midasqr.R'
         'midasr-package.R' 'midasreg.R' 'modsel.R' 'nonparametric.R'
         'simulate.R' 'tests.R'
+Authors@R: c(
+    person(given = "Vaidotas", 
+        family = "Zemlys-Balevičius",
+        email = "zemlys@gmail.com", 
+        role = "cre"),
+    person(given = "Virmantas", 
+        family = "Kvedaras", 
+        email = "virmantas.kvedaras@ec.europa.eu", 
+        role = "aut"),
+    person(given = "Vaidotas", 
+        family= "Zemlys-Balevičius", 
+        email = "zemlys@gmail.com", 
+        role = "aut"))
 NeedsCompilation: no
-Packaged: 2021-02-20 16:24:42 UTC; mpiktas
+Packaged: 2025-04-07 10:26:06 UTC; mpiktas
+Author: Vaidotas Zemlys-Balevičius [cre],
+  Virmantas Kvedaras [aut],
+  Vaidotas Zemlys-Balevičius [aut]
+Maintainer: Vaidotas Zemlys-Balevičius <zemlys@gmail.com>
 Repository: CRAN
-Date/Publication: 2021-02-23 09:40:05 UTC
+Date/Publication: 2025-04-07 10:50:02 UTC
